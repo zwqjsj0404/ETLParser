@@ -1,0 +1,159 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.teradata.mds</groupId>
+	<artifactId>etl-parser</artifactId>
+	<packaging>jar</packaging>
+	<version>1.0.0</version>
+	<name>elt-parser</name>
+	<description>elt-parser主要负责ETL脚本、脚本执行日志的解析工作，由其中解析出元数据之间的关联关系</description>
+	<url>http://maven.apache.org</url>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+  	
+	<dependencies>
+		<!-- 性能测试包  -->
+		<dependency>
+			<groupId>org.perf4j</groupId>
+			<artifactId>perf4j</artifactId>
+			<version>0.9.12</version>
+			<classifier>jdk14</classifier>
+			<scope>compile</scope>
+		</dependency>
+
+		<!-- 第三方多线程包 -->
+		<dependency>
+			<groupId>backport-util-concurrent</groupId>
+			<artifactId>backport-util-concurrent</artifactId>
+			<version>3.1</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.teradata</groupId>
+			<artifactId>terajdbc4</artifactId>
+			<version>13.10.0.1</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.teradata</groupId>
+			<artifactId>ncrdb</artifactId>
+			<version>1.0</version>
+			<classifier>icbc</classifier>
+		</dependency>
+
+		<dependency>
+			<groupId>com.teradata</groupId>
+			<artifactId>ncrmds_ejb</artifactId>
+			<version>1.0</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.teradata.tap</groupId>
+			<artifactId>tap_common</artifactId>
+			<version>1.0</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.teradata</groupId>
+			<artifactId>engineejb</artifactId>
+			<version>2009.11.20</version>
+		</dependency>
+
+		<dependency>
+			<groupId>log4j</groupId>
+			<artifactId>log4j</artifactId>
+			<version>1.2.9</version>
+		</dependency>
+
+		<!-- 单元测试 
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>3.8.1</version>
+			<scope>test</scope>
+		</dependency>
+		-->
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>copy-dependencies</id>
+						<phase>package</phase>
+						<goals>
+							<goal>copy-dependencies</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.build.directory}/lib</outputDirectory>
+							<overWriteReleases>false</overWriteReleases>
+							<overWriteSnapshots>false</overWriteSnapshots>
+							<overWriteIfNewer>true</overWriteIfNewer>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>   
+
+			<plugin>
+				<!-- 此plugin为maven编译用 -->
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>2.3.2</version>
+				<configuration>
+					<source>1.4</source>
+					<target>1.4</target>
+					<encoding>utf8</encoding>
+				</configuration>
+			</plugin>
+
+			<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<configuration>
+					<descriptorRefs>
+						<descriptorRef>jar-with-dependencies</descriptorRef>
+					</descriptorRefs>
+					<archive>
+						<manifest>
+							<mainClass>com.teradata.mds.etlparser.RelaParser</mainClass>
+						</manifest>
+					</archive>
+				</configuration>
+			</plugin>
+			
+			<!-- 代码混淆plugin -->
+			<!-- plugin>
+				<groupId>com.pyx4me</groupId>
+				<artifactId>proguard-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>proguard</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<options>
+						<option>-dontoptimize</option>
+						<option>-keep public class *</option>
+						<option> -keepattributes Exceptions, InnerClasses, Signature,
+							Deprecated, *Annotation*, EnclosingMethod </option>
+						<option>
+							-keepclassmembers class *{!private &lt;fields&gt;;!private
+							&lt;methods&gt;;} </option>
+					</options>
+					<libs>
+						<lib>${java.home}/lib/rt.jar</lib>
+					</libs>
+				</configuration>
+			</plugin-->
+			
+		</plugins>
+	</build>
+	
+</project>
