@@ -103,7 +103,7 @@ public class SQLParserLoader implements Runnable {
 				",UPPER(SCRIPT_NAME) " +
 				"FROM M05_ETL_SCRIPT " +
 				"WHERE END_DT='2999-12-31 00:00:00'";
-		
+
 		HashMap map = new HashMap(RelaParser.HASHMAP_CAPACITY);
 		
 		List cols = null;
@@ -171,6 +171,11 @@ public class SQLParserLoader implements Runnable {
 			for (Iterator iterator = cols.iterator(); iterator.hasNext();) {
 				Map col = (Map) iterator.next();
 				String key = col.get("DATABASENAME") + postfix + "." + col.get("OBJNAME");
+
+        if("CV_PVIEW.T99_STD_CDE_MAP_INFO".equals(key)) {
+          System.out.println("Bingo");
+        }
+
 				List tableCols = (List) colMap.get(key);
 				if (tableCols == null) {
 					tableCols = new ArrayList();

@@ -1510,12 +1510,13 @@ public class SqlParser {
 			sqlIndex = this.commonIndex(full_table);
 			if(sqlIndex >= 0) {
 				Map tableInfo = null;
-				for(int j=0; j<this.volatileTableList.size(); j++) {
-					tableInfo = (Map) this.volatileTableList.get(j);
+				for(int j=0; j<this.commonTableList.size(); j++) {
+					tableInfo = (Map) this.commonTableList.get(j);
 					Integer index = (Integer) tableInfo.get("sqlIndex");
 					if(index.intValue() == sqlIndex) break;
 				}
-				
+
+        if(tableInfo == null) break;
 				List const_cols = (List) tableInfo.get("const_column_list");
 				if(const_cols != null) {
 					for(int j=0; j<const_cols.size(); j++) {
@@ -2210,6 +2211,7 @@ public class SqlParser {
 				throw new MDSException("table : " + sysName + "." + tableName
 						+ " is not loaded or some columns in this table are not loaded!");
 		} catch (ParseException e) {
+      e.printStackTrace();
 			throw new MDSException(e);
 		}
 		// System.out.println(columnList);
@@ -2771,8 +2773,8 @@ public class SqlParser {
 				Map commonTable = null;
 
 				//Map tableInfo = null;
-				for(int j=0; j<this.volatileTableList.size(); j++) {
-					commonTable = (Map) this.volatileTableList.get(j);
+				for(int j=0; j<this.commonTableList.size(); j++) {
+					commonTable = (Map) this.commonTableList.get(j);
 					Integer sqlIndex = (Integer) commonTable.get("sqlIndex");
 					if(sqlIndex.intValue() == index) break;
 				}
