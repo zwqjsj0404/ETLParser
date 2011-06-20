@@ -797,7 +797,6 @@ public class SqlParser {
 	 * @throws MDSException
 	 */
 	public List parseInsert(StatementTree sTree) throws MDSException {
-		List sourceColumns = new ArrayList();
 		List resultColumns = new ArrayList();
 		HashMap map = sTree.map;
 		String tableNameWithDot = (String) map.get("table_name"); // target table "database.table"
@@ -834,387 +833,17 @@ public class SqlParser {
 				col_list.add(targetCName);
 			}
 		}
-		
 
 		StatementTree select = (StatementTree) map.get("select"); // query in the insert statement
 		if (select != null) {
 			HashMap selmap = select.map;
 			TableSelectExpression selExp = (TableSelectExpression) selmap.get("table_expression");
+      parseSelectInInsert(resultColumns, tableName, sysName, col_list, selExp);
 
-			
-			// get all related columns
-			List columns = selExp.columns;
-			List tempColList = new ArrayList();
-			// if having * in select clause, replace it with column names implied
-			for (int i = 0; i < columns.size(); i++) {
-				SelectColumn tempColumn = (SelectColumn) columns.get(i);
-				if (tempColumn.glob_name != null) {
-					if (tempColumn.glob_name.indexOf("*") >= 0) {
-
-						List columnsStarImplied = getAllColumnsStarImplied(tempColumn, selExp);
-						for (int j = 0; j < columnsStarImplied.size(); j++) {
-							String nameStr = (String) columnsStarImplied.get(j);
-							SelectColumn selColumn = new SelectColumn();
-							SQL parser = new SQL(getStream(nameStr.toString()));
-							try {
-								Expression e = parser.DoExpression();
-								selColumn.expression = e;
-								tempColList.add(selColumn);
-							} catch (Exception e) {
-								e.printStackTrace();
-								logger.warn(e.getMessage());
-							}
-						}
-						columnsStarImplied = null;
-					}
-				} else
-					tempColList.add(tempColumn);
-			}
-			columns = tempColList;
-			tempColList = null;
-			try {
-				//关系列表，Where条件及Join中的条件，标记为Source
-				List conditions = getConditionsFromTableSelectExp(selExp);
-				for(int i=0; i<conditions.size(); i++) {
-					Map condition = (Map) conditions.get(i);
-					condition.put("type", "Source");
-				}
-
-				List resultColumnList = new ArrayList();
-				List directColumnList = new ArrayList();		//保存直接关系的列表
-				for (int i = 0; i < col_list.size(); i++) {
-					String targetCName = (String) col_list.get(i);
-					SelectColumn column = (SelectColumn) columns.get(i);
-					List columnNames = new ArrayList();
-					String alias = column.alias;
-					String exp = "";
-
-					// insert对应的select中的相关字段
-					if (column.expression != null) {
-						exp = column.expression.text().toString();
-						columnNames = getRelatedColumnNames(column);
-						//判断是否是单一常量
-						if(columnNames.size() == 1) {
-							String sourceCName = (String) columnNames.get(0);
-							if(sourceCName.indexOf("_constant_") == 0) {
-								String value = sourceCName.substring(10);
-								if(!"".equals(value.trim())) {
-									Map condition = new HashMap();
-									condition.put("database", sysName);
-									condition.put("table", tableName);
-									condition.put("column", targetCName);
-									condition.put("value", value);
-									condition.put("type", "Target");
-									conditions.add(condition);
-								}
-							}
-						}
-						if (alias != null)
-							exp = exp + " AS " + alias;
-
-						// 调用getSourceColumnList函数获得select中相关字段的源字段
-						for (int j = 0; j < columnNames.size(); j++) {
-							List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
-							if(directSourceColumns.size() == 1) {
-								//只处理一对一关联的
-								Map col = (Map) directSourceColumns.get(0);
-								String sourceDBName = (String) col.get("databaseName");
-								String sourceTName = (String) col.get("tableName");
-								String sourceCName = (String) col.get("columnName");
-								if(sourceCName.indexOf("_constant_") == -1) {
-									Map directRela = new HashMap();
-									directRela.put("targetDBName", sysName);
-									directRela.put("targetTName", tableName);
-									directRela.put("targetCName", targetCName);
-									directRela.put("sourceDBName", sourceDBName);
-									directRela.put("sourceTName", sourceTName);
-									directRela.put("sourceCName", sourceCName);
-									
-									directColumnList.add(directRela);
-								}
-							}
-
-							// long parseStartTime = System.currentTimeMillis();
-							sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-							
-							// long parseEndTime = System.currentTimeMillis();
-							// logger.info("column:"+targetCName);
-							// logger.info("get sourceColumn time=>"+(parseEndTime - parseStartTime));
-
-							temp_relation_num = temp_relation_num + sourceColumns.size();
-							if (ifBeyondLimit()) {
-								blankComment = true;
-								return null;
-							}
-							// long memory = Runtime.getRuntime().totalMemory()/1024;
-							// logger.info("memory==="+memory);
-							// logger.info("temp_relation_num = "+temp_relation_num);
-							for (int z = 0; z < sourceColumns.size(); z++) {
-								HashMap sourceColumn = (HashMap) sourceColumns.get(z);
-								HashMap resultColumn = new HashMap();
-								resultColumn.put("targetDBName", sysName);
-								resultColumn.put("targetTName", tableName);
-								resultColumn.put("targetCName", targetCName);
-								String sourceDBName = (String) sourceColumn.get("databaseName");
-								String sourceTName = (String) sourceColumn.get("tableName");
-								String sourceCName = (String) sourceColumn.get("columnName");
-								resultColumn.put("sourceDBName", sourceDBName);
-								resultColumn.put("sourceTName", sourceTName);
-								resultColumn.put("sourceCName", sourceCName);
-								String expression1 = (String) sourceColumn.get("expression");
-								expression1 = expression1.replaceAll("\r", " ");
-								expression1 = expression1.replaceAll("\n", " ");
-								String commentID = expression1;
-								if (sqlNum > sql_num_limit)
-									commentID = insertComment(expression1);
-								if (blankComment)
-									commentID = "Relation transformation is too complex, please refer to the script for detailed info...";
-
-								resultColumn.put("expression", getSubComm(commentID));
-								List oldConditions = (List) sourceColumn.get("conditions");
-								if(oldConditions != null) resultColumn.put("conditions", oldConditions);
-								// logger.info(""+sysName+"."+tableName+"."+targetCName+" <==> "+sourceDBName+"."+sourceTName+"."+sourceCName+"  ===  "+commentID);
-								resultColumnList.add(resultColumn);
-								
-							}
-							sourceColumns = null;
-						}
-					} else {
-						columnNames = getAllColumnsStarImplied(column, selExp);
-						if (col_list.size() == columnNames.size()) {
-							// 调用getSourceColumnList函数获得select中相关字段的源字段
-							for (int j = 0; j < columnNames.size(); j++) {
-								List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
-								if(directSourceColumns.size() == 1) {
-									//只处理一对一关联的
-									Map col = (Map) directSourceColumns.get(0);
-									String sourceDBName = (String) col.get("databaseName");
-									String sourceTName = (String) col.get("tableName");
-									String sourceCName = (String) col.get("columnName");
-									if(sourceCName.indexOf("_constant_") == -1) {
-										Map directRela = new HashMap();
-										directRela.put("targetDBName", sysName);
-										directRela.put("targetTName", tableName);
-										directRela.put("targetCName", targetCName);
-										directRela.put("sourceDBName", sourceDBName);
-										directRela.put("sourceTName", sourceTName);
-										directRela.put("sourceCName", sourceCName);
-										
-										directColumnList.add(directRela);
-									}
-								}
-
-								sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-								temp_relation_num = temp_relation_num + sourceColumns.size();
-								if (ifBeyondLimit()) {
-									blankComment = true;
-									return null;
-								}
-								for (int z = 0; z < sourceColumns.size(); z++) {
-									HashMap sourceColumn = (HashMap) sourceColumns.get(z);
-									HashMap resultColumn = new HashMap();
-									resultColumn.put("targetDBName", sysName);
-									resultColumn.put("targetTName", tableName);
-									resultColumn.put("targetCName", (String) col_list.get(j));
-									String sourceDBName = (String) sourceColumn.get("databaseName");
-									String sourceTName = (String) sourceColumn.get("tableName");
-									String sourceCName = (String) sourceColumn.get("columnName");
-									resultColumn.put("sourceDBName", sourceDBName);
-									resultColumn.put("sourceTName", sourceTName);
-									resultColumn.put("sourceCName", sourceCName);
-									String expression1 = (String) sourceColumn.get("expression");
-									expression1 = expression1.replaceAll("\r", " ");
-									expression1 = expression1.replaceAll("\n", " ");
-									String commentID = expression1;
-									if (sqlNum > sql_num_limit)
-										commentID = insertComment(expression1);
-									if (blankComment)
-										commentID = "Relation transformation is too complex, please refer to the script for detailed info...";
-									resultColumn.put("expression", getSubComm(commentID));
-									List oldConditions = (List) sourceColumn.get("conditions");
-									if(oldConditions != null) resultColumn.put("conditions", oldConditions);
-									resultColumnList.add(resultColumn);
-								}
-								sourceColumns = null;
-							}
-							i = i + columnNames.size() - 1;
-						} else {
-							throw new MDSException("==> colum number of view: " + tableName
-									+ " is not consistent with that of its selecting table!");
-						}
-					}
-				}
-
-				//过滤conditions
-				conditions = cleanConditions(conditions);
-				resultColumns.addAll(calcConstCondition(resultColumnList, directColumnList, conditions));
-				
-			} catch (MDSException e) {
-				throw e;
-			} catch (Exception e) {
-				throw new MDSException("==>colum number of insert is not consistent with that of its selecting table!", e);
-			}
-
-			// 处理union语句
+      // 处理union语句
 			while (selExp.composite_function != -1) {
-				List resultColumnList = new ArrayList();
-
 				selExp = selExp.next_composite;
-				// get all related columns
-				//关系列表
-				List conditions = getConditionsFromTableSelectExp(selExp);
-				List columnsInComposite = selExp.columns;
-				List directColumnList = new ArrayList();		//保存直接关系的列表
-				for (int i = 0; i < col_list.size(); i++) {
-					String targetCName = (String) col_list.get(i);
-					sourceColumns = new ArrayList();
-					SelectColumn column = (SelectColumn) columnsInComposite.get(i);
-					List columnNames = new ArrayList();
-
-					String alias = column.alias;
-					String exp = "";
-
-					if (column.expression != null) {
-						exp = column.expression.text().toString();
-						columnNames = getRelatedColumnNames(column);
-						
-						//判断是否是单一常量
-						if(columnNames.size() == 1) {
-							String sourceCName = (String) columnNames.get(0);
-							if(sourceCName.indexOf("_constant_") == 0) {
-								String value = sourceCName.substring(10);
-								if(!"".equals(value.trim())) {
-									Map condition = new HashMap();
-									condition.put("database", sysName);
-									condition.put("table", tableName);
-									condition.put("column", targetCName);
-									condition.put("value", value);
-									condition.put("type", "Target");
-									conditions.add(condition);
-								}
-							}
-						}
-						
-						if (alias != null)
-							exp = exp + " AS " + alias;
-
-						for (int j = 0; j < columnNames.size(); j++) {
-							List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
-							if(directSourceColumns.size() == 1) {
-								//只处理一对一关联的
-								Map col = (Map) directSourceColumns.get(0);
-								String sourceDBName = (String) col.get("databaseName");
-								String sourceTName = (String) col.get("tableName");
-								String sourceCName = (String) col.get("columnName");
-								if(sourceCName.indexOf("_constant_") == -1) {
-									Map directRela = new HashMap();
-									directRela.put("targetDBName", sysName);
-									directRela.put("targetTName", tableName);
-									directRela.put("targetCName", targetCName);
-									directRela.put("sourceDBName", sourceDBName);
-									directRela.put("sourceTName", sourceTName);
-									directRela.put("sourceCName", sourceCName);
-									
-									directColumnList.add(directRela);
-								}
-
-							}
-
-							sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-							temp_relation_num = temp_relation_num + sourceColumns.size();
-							if (ifBeyondLimit()) {
-								blankComment = true;
-								return null;
-							}
-							for (int z = 0; z < sourceColumns.size(); z++) {
-								HashMap sourceColumn = (HashMap) sourceColumns.get(z);
-								HashMap resultColumn = new HashMap();
-								resultColumn.put("targetDBName", sysName);
-								resultColumn.put("targetTName", tableName);
-								resultColumn.put("targetCName", targetCName);
-								resultColumn.put("sourceDBName", (String) sourceColumn.get("databaseName"));
-								resultColumn.put("sourceTName", (String) sourceColumn.get("tableName"));
-								resultColumn.put("sourceCName", (String) sourceColumn.get("columnName"));
-								String expression1 = (String) sourceColumn.get("expression");
-								expression1 = expression1.replaceAll("\r", " ");
-								expression1 = expression1.replaceAll("\n", " ");
-								String commentID = expression1;
-								if (sqlNum > sql_num_limit)
-									commentID = insertComment(expression1);
-								if (blankComment)
-									commentID = "Relation transformation is too complex, please refer to the script for detailed info...";
-								resultColumn.put("expression", getSubComm(commentID));
-								List oldConditions = (List) sourceColumn.get("conditions");
-								if(oldConditions != null) resultColumn.put("conditions", oldConditions);
-								resultColumnList.add(resultColumn);
-							}
-							sourceColumns = null;
-						}
-					} else {
-						columnNames = getAllColumnsStarImplied(column, selExp);
-						if (col_list.size() == columnNames.size()) {
-							for (int j = 0; j < columnNames.size(); j++) {
-								List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
-								if(directSourceColumns.size() == 1) {
-									//只处理一对一关联的
-									Map col = (Map) directSourceColumns.get(0);
-									String sourceDBName = (String) col.get("databaseName");
-									String sourceTName = (String) col.get("tableName");
-									String sourceCName = (String) col.get("columnName");
-									if(sourceCName.indexOf("_constant_") == -1) {
-										Map directRela = new HashMap();
-										directRela.put("targetDBName", sysName);
-										directRela.put("targetTName", tableName);
-										directRela.put("targetCName", targetCName);
-										directRela.put("sourceDBName", sourceDBName);
-										directRela.put("sourceTName", sourceTName);
-										directRela.put("sourceCName", sourceCName);
-										
-										directColumnList.add(directRela);
-									}
-
-								}
-								sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-								temp_relation_num = temp_relation_num + sourceColumns.size();
-								if (ifBeyondLimit()) {
-									blankComment = true;
-									return null;
-								}
-								for (int z = 0; z < sourceColumns.size(); z++) {
-									HashMap sourceColumn = (HashMap) sourceColumns.get(z);
-									HashMap resultColumn = new HashMap();
-									resultColumn.put("targetDBName", sysName);
-									resultColumn.put("targetTName", tableName);
-									resultColumn.put("targetCName", (String) col_list.get(j));
-									resultColumn.put("sourceDBName", (String) sourceColumn.get("databaseName"));
-									resultColumn.put("sourceTName", (String) sourceColumn.get("tableName"));
-									resultColumn.put("sourceCName", (String) sourceColumn.get("columnName"));
-									String expression1 = (String) sourceColumn.get("expression");
-									expression1 = expression1.replaceAll("\r", " ");
-									expression1 = expression1.replaceAll("\n", " ");
-									String commentID = expression1;
-									if (sqlNum > sql_num_limit)
-										commentID = insertComment(expression1);
-									if (blankComment)
-										commentID = "Relation transformation is too complex, please refer to the script for detailed info...";
-									resultColumn.put("expression", getSubComm(commentID));
-									List oldConditions = (List) sourceColumn.get("conditions");
-									if(oldConditions != null) resultColumn.put("conditions", oldConditions);
-									resultColumnList.add(resultColumn);
-								}
-								sourceColumns = null;
-							}
-							i = i + columnNames.size() - 1;
-						} else {
-							throw new MDSException("==> colum number of view: " + tableName
-									+ " is not consistent with that of its selecting table!");
-						}
-					}
-				}
-				
-				//过滤conditions
-				conditions = cleanConditions(conditions);
-				resultColumns.addAll(calcConstCondition(resultColumnList, directColumnList, conditions));
+        parseSelectInInsert(resultColumns, tableName, sysName, col_list, selExp);
 			}
 		} else {
 			List resultColumnList = new ArrayList();
@@ -1282,14 +911,214 @@ public class SqlParser {
 			resultColumns = new ArrayList();
 			return resultColumns;
 		}
-		map = null;
-		select = null;
-		sourceColumns = null;
 		return new ArrayList(new HashSet(resultColumns));
-		// return resultColumnList;
 	}
 
-	/**
+  private void parseSelectInInsert(List resultColumns, String tableName, String sysName, List col_list, TableSelectExpression selExp) throws MDSException {
+    // get all related columns
+    List sourceColumns = new ArrayList();
+    List columns = selExp.columns;
+    List tempColList = new ArrayList();
+    // if having * in select clause, replace it with column names implied
+    for (int i = 0; i < columns.size(); i++) {
+      SelectColumn tempColumn = (SelectColumn) columns.get(i);
+      if (tempColumn.glob_name != null) {
+        if (tempColumn.glob_name.indexOf("*") >= 0) {
+
+          List columnsStarImplied = getAllColumnsStarImplied(tempColumn, selExp);
+          for (int j = 0; j < columnsStarImplied.size(); j++) {
+            String nameStr = (String) columnsStarImplied.get(j);
+            SelectColumn selColumn = new SelectColumn();
+            SQL parser = new SQL(getStream(nameStr.toString()));
+            try {
+              Expression e = parser.DoExpression();
+              selColumn.expression = e;
+              tempColList.add(selColumn);
+            } catch (Exception e) {
+              e.printStackTrace();
+              logger.warn(e.getMessage());
+            }
+          }
+          columnsStarImplied = null;
+        }
+      } else
+        tempColList.add(tempColumn);
+    }
+    columns = tempColList;
+    tempColList = null;
+    try {
+      //关系列表，Where条件及Join中的条件，标记为Source
+      List conditions = getConditionsFromTableSelectExp(selExp);
+      for(int i=0; i<conditions.size(); i++) {
+        Map condition = (Map) conditions.get(i);
+        condition.put("type", "Source");
+      }
+
+      List resultColumnList = new ArrayList();
+      List directColumnList = new ArrayList();		//保存直接关系的列表
+      for (int i = 0; i < col_list.size(); i++) {
+        String targetCName = (String) col_list.get(i);
+        SelectColumn column = (SelectColumn) columns.get(i);
+        List columnNames = new ArrayList();
+        String alias = column.alias;
+        String exp = "";
+
+        // insert对应的select中的相关字段
+        if (column.expression != null) {
+          exp = column.expression.text().toString();
+          columnNames = getRelatedColumnNames(column);
+          //判断是否是单一常量
+          if(columnNames.size() == 1) {
+            String sourceCName = (String) columnNames.get(0);
+            if(sourceCName.indexOf("_constant_") == 0) {
+              String value = sourceCName.substring(10);
+              if(!"".equals(value.trim())) {
+                Map condition = new HashMap();
+                condition.put("database", sysName);
+                condition.put("table", tableName);
+                condition.put("column", targetCName);
+                condition.put("value", value);
+                condition.put("type", "Target");
+                conditions.add(condition);
+              }
+            }
+          }
+          if (alias != null)
+            exp = exp + " AS " + alias;
+
+          // 调用getSourceColumnList函数获得select中相关字段的源字段
+          for (int j = 0; j < columnNames.size(); j++) {
+            List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
+            if(directSourceColumns.size() == 1) {
+              //只处理一对一关联的
+              Map col = (Map) directSourceColumns.get(0);
+              String sourceDBName = (String) col.get("databaseName");
+              String sourceTName = (String) col.get("tableName");
+              String sourceCName = (String) col.get("columnName");
+              if(sourceCName.indexOf("_constant_") == -1) {
+                Map directRela = new HashMap();
+                directRela.put("targetDBName", sysName);
+                directRela.put("targetTName", tableName);
+                directRela.put("targetCName", targetCName);
+                directRela.put("sourceDBName", sourceDBName);
+                directRela.put("sourceTName", sourceTName);
+                directRela.put("sourceCName", sourceCName);
+
+                directColumnList.add(directRela);
+              }
+            }
+
+            // long parseStartTime = System.currentTimeMillis();
+            sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
+
+            // long parseEndTime = System.currentTimeMillis();
+            // logger.info("column:"+targetCName);
+            // logger.info("get sourceColumn time=>"+(parseEndTime - parseStartTime));
+
+            temp_relation_num = temp_relation_num + sourceColumns.size();
+
+            for (int z = 0; z < sourceColumns.size(); z++) {
+              HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+              HashMap resultColumn = new HashMap();
+              resultColumn.put("targetDBName", sysName);
+              resultColumn.put("targetTName", tableName);
+              resultColumn.put("targetCName", targetCName);
+              String sourceDBName = (String) sourceColumn.get("databaseName");
+              String sourceTName = (String) sourceColumn.get("tableName");
+              String sourceCName = (String) sourceColumn.get("columnName");
+              resultColumn.put("sourceDBName", sourceDBName);
+              resultColumn.put("sourceTName", sourceTName);
+              resultColumn.put("sourceCName", sourceCName);
+              String expression1 = (String) sourceColumn.get("expression");
+              expression1 = expression1.replaceAll("\r", " ");
+              expression1 = expression1.replaceAll("\n", " ");
+              String commentID = expression1;
+              if (sqlNum > sql_num_limit)
+                commentID = insertComment(expression1);
+              if (blankComment)
+                commentID = "Relation transformation is too complex, please refer to the script for detailed info...";
+
+              resultColumn.put("expression", getSubComm(commentID));
+              List oldConditions = (List) sourceColumn.get("conditions");
+              if(oldConditions != null) resultColumn.put("conditions", oldConditions);
+              // logger.info(""+sysName+"."+tableName+"."+targetCName+" <==> "+sourceDBName+"."+sourceTName+"."+sourceCName+"  ===  "+commentID);
+              resultColumnList.add(resultColumn);
+
+            }
+            sourceColumns = null;
+          }
+        } else {
+          columnNames = getAllColumnsStarImplied(column, selExp);
+          if (col_list.size() == columnNames.size()) {
+            // 调用getSourceColumnList函数获得select中相关字段的源字段
+            for (int j = 0; j < columnNames.size(); j++) {
+              List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
+              if(directSourceColumns.size() == 1) {
+                //只处理一对一关联的
+                Map col = (Map) directSourceColumns.get(0);
+                String sourceDBName = (String) col.get("databaseName");
+                String sourceTName = (String) col.get("tableName");
+                String sourceCName = (String) col.get("columnName");
+                if(sourceCName.indexOf("_constant_") == -1) {
+                  Map directRela = new HashMap();
+                  directRela.put("targetDBName", sysName);
+                  directRela.put("targetTName", tableName);
+                  directRela.put("targetCName", targetCName);
+                  directRela.put("sourceDBName", sourceDBName);
+                  directRela.put("sourceTName", sourceTName);
+                  directRela.put("sourceCName", sourceCName);
+
+                  directColumnList.add(directRela);
+                }
+              }
+
+              sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
+              temp_relation_num = temp_relation_num + sourceColumns.size();
+              for (int z = 0; z < sourceColumns.size(); z++) {
+                HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+                HashMap resultColumn = new HashMap();
+                resultColumn.put("targetDBName", sysName);
+                resultColumn.put("targetTName", tableName);
+                resultColumn.put("targetCName", (String) col_list.get(j));
+                String sourceDBName = (String) sourceColumn.get("databaseName");
+                String sourceTName = (String) sourceColumn.get("tableName");
+                String sourceCName = (String) sourceColumn.get("columnName");
+                resultColumn.put("sourceDBName", sourceDBName);
+                resultColumn.put("sourceTName", sourceTName);
+                resultColumn.put("sourceCName", sourceCName);
+                String expression1 = (String) sourceColumn.get("expression");
+                expression1 = expression1.replaceAll("\r", " ");
+                expression1 = expression1.replaceAll("\n", " ");
+                String commentID = expression1;
+                if (sqlNum > sql_num_limit)
+                  commentID = insertComment(expression1);
+                if (blankComment)
+                  commentID = "Relation transformation is too complex, please refer to the script for detailed info...";
+                resultColumn.put("expression", getSubComm(commentID));
+                List oldConditions = (List) sourceColumn.get("conditions");
+                if(oldConditions != null) resultColumn.put("conditions", oldConditions);
+                resultColumnList.add(resultColumn);
+              }
+              sourceColumns = null;
+            }
+            i = i + columnNames.size() - 1;
+          } else {
+            throw new MDSException("==> colum number of view: " + tableName
+                + " is not consistent with that of its selecting table!");
+          }
+        }
+      }
+
+      //过滤conditions
+      conditions = cleanConditions(conditions);
+      resultColumns.addAll(calcConstCondition(resultColumnList, directColumnList, conditions));
+
+    } catch (Exception e) {
+      throw new MDSException("==>colum number of insert is not consistent with that of its selecting table!", e);
+    }
+  }
+
+  /**
 	 * 处理
 	 * @param resultColumnList
 	 * @param conditions
