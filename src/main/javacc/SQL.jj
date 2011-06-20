@@ -1,0 +1,3159 @@
+/**
+ * SQL Grammar (JavaCC)
+ * SELECT [ DISTINCT | ALL ]
+ * column_expression1, column_expression2, ....
+ * [ FROM from_clause ]
+ * [ WHERE where_expression ]
+ * [ GROUP BY expression1, expression2, .... ]
+ * [ HAVING having_expression ]
+ * [ ORDER BY order_column_expr1, order_column_expr2, .... ]
+
+ * column_expression ::= expression [ AS ] [ column_alias ]
+
+ * from_clause ::= select_table1, select_table2, ...
+ * from_clause ::= select_table1 LEFT [OUTER] JOIN select_table2 ON expr  ...
+ * from_clause ::= select_table1 RIGHT [OUTER] JOIN select_table2 ON expr  ...
+ * from_clause ::= select_table1 [INNER] JOIN select_table2  ...
+
+ * select_table ::= table_name [ AS ] [ table_alias ]
+ * select_table ::= ( sub_select_statement ) [ AS ] [ table_alias ]
+
+ * order_column_expr ::= expression [ ASC | DESC ]
+ * 
+ */
+
+options {
+  STATIC = false;
+  UNICODE_INPUT = true;
+  OPTIMIZE_TOKEN_MANAGER = true;
+//  IGNORE_CASE = true;
+  DEBUG_PARSER = false;
+}
+
+PARSER_BEGIN(SQL)
+
+package com.teradata.sqlparser.parser;
+
+import com.teradata.sqlparser.node.*;
+import com.teradata.sqlparser.global.*;
+import com.teradata.sqlparser.interpret.*;
+import java.util.ArrayList;
+import java.util.Stack;
+import java.util.HashMap;
+
+public class SQL {
+
+  // State variables for the parser  
+  private boolean case_insensitive_identifiers = false;
+  
+  /**
+   * The parameter id.
+   */
+  private int parameter_id = 0;
+  
+  
+  /**
+   * Resets the parameter id.  This MUST be called before a parser is used
+   * to parse a statement.
+   */
+  public void reset() {
+    parameter_id = 0;
+  }
+  
+  /**
+   * Creates and returns a parameter substitution.  This is called when the
+   * parser comes across a '?' style object.  This object is used to mark an
+   * expression with a place mark that can be substituted for a value later.
+   */
+   /*
+  public ParameterSubstitution createSubstitution(String image) {
+    ParameterSubstitution ps = new ParameterSubstitution(parameter_id);
+    ++parameter_id;
+    return ps;
+  }
+  */ 
+  
+  /**
+   * Helper for expression parsing.
+   * Called when an end parenthese has been found.
+   */
+  public void expEndParen(Expression exp, Stack stack) {
+    Operator op = (Operator) stack.pop();
+    while (!op.is("(")) {
+      addOperatorToExpression(exp, op);
+      op = (Operator) stack.pop();
+    }
+  }
+  
+  /**
+   * Helper for expression parsing.
+   * Called when an operator has been read in.  This needs to check precedence
+   * and add the operator to the expression as appropriate.
+   */
+  public void expOperator(Expression exp, Stack stack, Operator op) {
+    int precedence = op.precedence();
+    flushOperatorStack(exp, stack, precedence);
+    stack.push(op);
+  }
+
+  /**
+   * Flush the operator stack until the stack is either empty or the top
+   * element is either a "(" or of a precedence lower than the given
+   * precedence.
+   */
+  public void flushOperatorStack(Expression exp, Stack stack, int precedence) {
+    if (!stack.empty()) {
+      Operator top_op = (Operator) stack.pop();
+      while (!top_op.is("(") && top_op.precedence() >= precedence) {
+        addOperatorToExpression(exp, top_op);
+        if (stack.empty()) {
+          return;
+        }
+        top_op = (Operator) stack.pop();
+      }
+      stack.push(top_op);
+    }
+  }
+  
+  /**
+   * Helper for expression parsing.
+   * Called when an entire expression has been read in.  We need to empty
+   * the stack.
+   */
+  public void expEnd(Expression exp, Stack stack) {
+    while (!stack.empty()) {
+      Operator op = (Operator) stack.pop();
+      addOperatorToExpression(exp, op);
+    }
+  }
+
+  /**
+   * Helper for expression parsing.
+   * Adds an operator to the given expression.
+   */
+  public void addOperatorToExpression(Expression exp, Operator op) {
+    if (op.is("not")) {
+      exp.addElement(null);
+    }
+    exp.addOperator(op);
+  }
+
+  
+  
+  public static void main(String args[]) throws ParseException {  
+    System.out.println("please input : ");
+    SQL parser = new SQL(System.in);
+    /*
+    Expression exp;
+    exp = parser.Test();
+    System.out.println(exp.text());
+    List<Variable> vars = exp.allVariables();
+    for (int i = 0; i < vars.size(); i++ ){
+    	Variable var = vars.get(i);  
+    	String dName = "[]";
+    	String tName = "[]"; 
+    	if( var.getTableName()!=null ) {
+    		tName = var.getTableName().getName();     	
+    		if (var.getTableName().getSchema()!=null) 
+    			dName = var.getTableName().getSchema(); 
+    	}
+    	
+    	System.out.println("column name : "+dName+ "." + tName+"."+var.getName());
+    }
+    */
+
+    StatementTree statement;
+    statement = parser.Statement();
+    HashMap map = statement.map;
+    if (statement.getClassName().equals("com.teradata.sqlparser.interpret.Select")){
+            TableSelectExpression selExp =(TableSelectExpression) map.get("table_expression");
+            ArrayList columns = selExp.columns;
+
+            for ( int i = 0; i < columns.size(); i++ ){
+                SelectColumn column = (SelectColumn)columns.get(i);
+                if (column.expression!=null){
+                        if (column.expression.allVariables().size()==0){
+                                System.out.println("the column name is a constant! ");
+                        }
+                        else{
+                                for (int j = 0; j < column.expression.allVariables().size(); j++){
+                                        Variable var = (Variable) column.expression.allVariables().get(j);
+                                System.out.println("the related column name : "+var.getName());
+                                }
+                        }
+                         System.out.println("the column alias : "+column.alias);
+                   System.out.println("the expression is : " + column.expression.text());
+                   if (column.formatStr!=null) System.out.println("the column format is : " + column.formatStr);
+                   if (column.titleStr!=null) System.out.println("the column title is : " + column.titleStr);
+                }
+                else{
+                       // if("*".equalsIgnoreCase(column.glob_name))
+                                System.out.println("the columns is : " + column.glob_name);
+                }
+            }
+
+            FromClause fromclause = selExp.from_clause;
+            ArrayList def_list = fromclause.def_list;
+
+
+            /* ???from????????????????alias???????alias??? */
+
+            for (int i = 0; i < def_list.size(); i++) {
+                FromTableDef table_def = (FromTableDef) def_list.get(i);
+                System.out.println("the table name : " + table_def.getName());
+                if (table_def.getAlias()!=null)
+                        System.out.println("the table alias name : " + table_def.getAlias());
+                if (table_def.isSubQueryTable()){
+                        TableSelectExpression sub_query = table_def.getTableSelectExpression();
+                        FromClause from_insubquery = sub_query.from_clause;
+                        for(int j = 0; j < from_insubquery.def_list.size(); j++){
+                                FromTableDef def = (FromTableDef) from_insubquery.def_list.get(j);
+                                System.out.println("the table name in subquery is : " + def.getName());
+                        }
+
+                }
+            }
+            System.out.println("");
+			
+			//where clause
+            Expression whereExp = selExp.where_clause.getFromExpression();
+            for( int i = 0; i < whereExp.allElements().size(); i++){
+            	Object element = whereExp.allElements().get(i);
+            	if ( element.getClass().getName().equals("com.teradata.sqlparser.interpret.TableSelectExpression")){
+            		TableSelectExpression tablesel = (TableSelectExpression) element;
+            		FromClause from = (FromClause) tablesel.from_clause;
+            		ArrayList def = (ArrayList) from.def_list;
+            		for( int j = 0; j < def.size(); j++ ){
+            			FromTableDef table_def = (FromTableDef) def.get(j);
+                        System.out.println("tables in sub query: " + table_def.getName());            		
+            		}            		
+            	}
+            }           
+			
+            /* ???union??select??? */
+
+            System.out.println("============================================");
+            while (selExp.composite_function != -1){
+                selExp = selExp.next_composite;
+                columns = selExp.columns;
+                System.out.println("");
+                System.out.println("here is the union select statement info : ");
+                for ( int i = 0; i < columns.size(); i++ ){
+                    SelectColumn column = (SelectColumn)columns.get(i);
+                    System.out.println("the column alias : "+column.alias);
+                    if (column.expression.allVariables().size()==0){
+                        System.out.println("the column name is a constant! ");
+                    }
+                    else{
+                        Variable var = (Variable) column.expression.allVariables().get(0);
+                        System.out.println("the column name : "+var.getName());
+                    }
+                }
+            }
+           }
+
+    /*create table???? */
+    if (statement.getClassName().equals("com.teradata.sqlparser.interpret.CreateTable")){
+            //String database_name =(String) map.get("database_name");
+            String table_name = (String) map.get("table_name");
+            Boolean ifVolatile = (Boolean) map.get("volatile");
+            //if(database_name != null) System.out.println("the database name is : "+database_name);           
+            System.out.println("the table name is : "+table_name);
+            System.out.println(" volatile table: " + ifVolatile);
+            ArrayList columns = (ArrayList) map.get("column_list");
+            for( int i = 0; i < columns.size(); i++){
+                System.out.println(" ************** column definition and constraints **********");
+                ColumnDef column = (ColumnDef) columns.get(i);                 
+                System.out.println("the column name is : "+column.name);
+                System.out.println("the column type is : "+column.type.asSQLString());
+              /*
+              if (column.default_expression!=null)
+                  System.out.println("the column default expression is : "+column.default_expression.text());
+              System.out.println(" if not null : " + column.isNotNull());
+              System.out.println(" if unique : " + column.isUnique());
+              System.out.println(" if primary key : " + column.isPrimaryKey());*/
+            }
+             ArrayList constraints = (ArrayList) map.get("constraint_list");
+            System.out.println(" +++++++++++++++++ Table-Level Named Constraints ++++++++++++++++");
+            for( int i = 0; i < constraints.size(); i++){
+                ConstraintDef constraint = (ConstraintDef) constraints.get(i);
+                System.out.println(" Constraint name : " + constraint.name );
+                if (constraint.type == constraint.PRIMARY_KEY){
+                        System.out.println(" PRIMARY KEY : ");
+                        for ( int j = 0; j < constraint.getColumnList().length; j++)
+                                System.out.println("  ---: "+constraint.getColumnList()[j]);
+                }
+                else if (constraint.type == constraint.UNIQUE){
+                    System.out.println(" UNIQUE KEY: ");
+                    for ( int j = 0; j < constraint.getColumnList().length; j++)
+                        System.out.println("  ---: "+constraint.getColumnList()[j]);
+                }
+                else if (constraint.type == constraint.FOREIGN_KEY){
+                    System.out.println(" FOREIGN KEY : ");
+                    for ( int j = 0; j < constraint.getColumnList().length; j++){
+                        System.out.println("  ---columns: " + constraint.getColumnList()[j]);
+                        System.out.println("  ---referenced columns : " + constraint.getColumnList2()[j]);
+                    }
+                }
+                else if (constraint.type == constraint.CHECK){
+                                System.out.println(" CHECK EXPRESSION : " + constraint.check_expression.text());
+                }
+            }
+            ArrayList indexlist = (ArrayList) map.get("index_list");
+            System.out.println(" +++++++++++++++++ Index Definition Clause ++++++++++++++++");
+            for(int i = 0; i < indexlist.size(); i++){
+                IndexDef index = (IndexDef) indexlist.get(i);
+                if(index.getName()!=null)
+                        System.out.println("Index name : " + index.getName());
+                //System.out.println("Index type : " + index.index_type);
+                ArrayList index_columns = index.getColumnList();
+                System.out.println("Index Columns : ");
+                for (int j = 0; j< index_columns.size(); j++){
+                        String index_column = (String) index_columns.get(j);
+                        System.out.println("   "+index_column);
+                }
+                 if(index.getPartitionExp()!=null)
+                    System.out.println("Partition Expression : " + index.getPartitionExp().text());
+            }
+						
+						String sourceTable = (String) map.get("as_table");
+						System.out.println("The source table is : " + sourceTable);
+            /* subquery of the as clause */
+
+            StatementTree select = (StatementTree) map.get("as_clause");
+            System.out.println(" +++++++++++++++++ AS Clause ++++++++++++++++");
+            if(select!=null){
+	            HashMap asmap = select.map;
+	            TableSelectExpression selExp =(TableSelectExpression) asmap.get("table_expression");
+	            ArrayList ascolumns = selExp.columns;
+	            for ( int i = 0; i < ascolumns.size(); i++ ){
+	                SelectColumn ascolumn = (SelectColumn)ascolumns.get(i);
+	                if(ascolumn.expression!=null){
+	                        if (ascolumn.expression.allVariables().size()==0){
+	                        System.out.println("the column name is a constant! ");
+	                        }
+	                        else{
+	                        for (int j = 0; j < ascolumn.expression.allVariables().size(); j++){
+	                                Variable var = (Variable) ascolumn.expression.allVariables().get(j);
+	                        System.out.println("the related column name : "+var.getName());
+	                    }
+	                }
+	
+	                System.out.println("the column alias : "+ascolumn.alias);
+	                System.out.println("the expression is : " + ascolumn.expression.text());
+	            }
+	            else System.out.println("the columns in the as clause is ALL(*) : ");
+	           }
+	
+	            FromClause fromclause = selExp.from_clause;
+	            ArrayList def_list = fromclause.def_list;
+	
+	            for (int i = 0; i < def_list.size(); i++) {
+	                FromTableDef table_def = (FromTableDef) def_list.get(i);
+	                System.out.println("the table name in the as clause : " + table_def.getName());
+	                if (table_def.getAlias()!=null)
+	                        System.out.println("the table alias name : " + table_def.getAlias());
+	                if (table_def.isSubQueryTable()){
+	                        TableSelectExpression sub_query = table_def.getTableSelectExpression();
+	                        FromClause from_insubquery = sub_query.from_clause;
+	                        for(int j = 0; j < from_insubquery.def_list.size(); j++){
+	                                FromTableDef def = (FromTableDef) from_insubquery.def_list.get(j);
+	                                System.out.println("the table name in subquery is : " + def.getName());
+	                        }
+	
+	                }
+	            }
+            }
+          }
+
+
+    //insert ??????
+    if (statement.getClassName().equals("com.teradata.sqlparser.interpret.Insert")){
+            String table_name = (String) map.get("table_name");
+            ArrayList col_list = (ArrayList) map.get("col_list");
+            ArrayList values_list = (ArrayList) map.get("data_list");
+            StatementTree select = (StatementTree) map.get("select");
+            String type = (String) map.get("type");
+
+            System.out.println("the insert table name is : " + table_name);
+            if(col_list!=null){
+                for (int i = 0; i < col_list.size(); i++){
+                        System.out.println("the insert table col is : " + col_list.get(i));
+                }
+            }
+
+            //??insert???select???
+
+            if (type.equals("from_select")){
+                HashMap selMap = select.map;
+                TableSelectExpression selExp =(TableSelectExpression) selMap.get("table_expression");
+                ArrayList insertcolumns = selExp.columns;
+                for(int i = 0; i < insertcolumns.size(); i++){
+                        SelectColumn insertcolumn = (SelectColumn)insertcolumns.get(i);
+                    if(insertcolumn.expression!=null){
+                        if (insertcolumn.expression.allVariables().size()==0){
+                            System.out.println("the column name is a constant! ");
+                            }
+                        else{
+                            for (int j = 0; j < insertcolumn.expression.allVariables().size(); j++){
+                                    Variable var = (Variable) insertcolumn.expression.allVariables().get(j);
+                                    System.out.println("the related column name : "+var.getName());
+                            }
+                        }
+
+                        System.out.println("column expression is : " + insertcolumn.expression.text());
+                    }
+                    else System.out.println("the columns in the as clause is ALL(*) : ");
+                }
+
+                //FromClause fromclause = selExp.from_clause;
+
+                ArrayList def_list = selExp.from_clause.def_list;
+                for (int i = 0; i < def_list.size(); i++) {
+                    FromTableDef table_def = (FromTableDef) def_list.get(i);
+                    System.out.println("the table name in the insert selecting statement : " + table_def.getName());
+                    if (table_def.isSubQueryTable()){
+                            TableSelectExpression sub_query = table_def.getTableSelectExpression();
+                            FromClause from_insubquery = sub_query.from_clause;
+                            for(int j = 0; j < from_insubquery.def_list.size(); j++){
+                                    FromTableDef def = (FromTableDef) from_insubquery.def_list.get(j);
+                                    System.out.println("the table name in inserting subquery is : " + def.getName());
+                            }
+                    }
+                }
+            }
+            else{
+                String values = "";
+                for (int i = 0; i < values_list.size(); i++){
+                        values = values + values_list.get(i);
+                }
+                System.out.println("the insert values  is : " + values);
+            }
+          }
+
+    //create view ????
+
+    if (statement.getClassName().equals("com.teradata.sqlparser.interpret.ViewManager")){
+            String view_name = (String) map.get("view_name");
+            ArrayList col_list = (ArrayList) map.get("column_list");
+            TableSelectExpression select_cmd =(TableSelectExpression) map.get("select_expression");
+            System.out.println("the created view name : "+view_name);
+            for (int i = 0; i< col_list.size(); i++){
+                System.out.println("the view column : "+col_list.get(i));
+            }
+
+            ArrayList columns = select_cmd.columns;
+            for(int i = 0; i< columns.size(); i++){
+                SelectColumn column = (SelectColumn)columns.get(i);
+                if(column.expression!=null){
+                        System.out.println("select column expression : "+column.expression.text());
+                }
+            }
+            ArrayList def_list = select_cmd.from_clause.def_list;
+            for (int i = 0; i < def_list.size(); i++) {
+                FromTableDef table_def = (FromTableDef) def_list.get(i);
+                System.out.println("the table name in the create view statement : " + table_def.getName());
+            }
+    }
+     //delete??????
+    if (statement.getClassName().equals("com.teradata.sqlparser.interpret.Delete")){
+        String table_name = (String) map.get("table_name");
+        String correlation_name = (String) map.get("correlation_name");
+        SearchExpression where_clause =(SearchExpression) map.get("where_clause");
+        System.out.println("the delete table name : "+table_name);
+        if (correlation_name!=null){
+                System.out.println("the correlation table name : "+correlation_name);
+        }
+        System.out.println("the delete where clause : "+where_clause.getFromExpression().text());
+    }
+
+    //drop??????
+    if (statement.getClassName().equals("com.teradata.sqlparser.interpret.Drop")){
+        String drop_obj_name = (String) map.get("drop_obj_name");
+        String drop_obj_type = (String) map.get("drop_obj_type");
+      System.out.println("the drop object type : "+drop_obj_type);
+      System.out.println("the drop object name : "+drop_obj_name);
+    }
+    
+    //update
+     if (statement.getClassName().equals("com.teradata.sqlparser.interpret.UpdateTable")){
+        String table_name = (String) map.get("table_name");
+        //String whereClause = (String) map.get("where_clause");
+      System.out.println("the update table name : "+table_name);
+      //System.out.println("the drop object name : "+drop_obj_name);
+    }
+    
+     //alter
+     if (statement.getClassName().equals("com.teradata.sqlparser.interpret.AlterTable")){
+        String table_name = (String) map.get("table_name");
+        System.out.println("the alter table name : "+table_name); 
+        //AlterTableAction actions = (AlterTableAction) map.get("alter_action");
+        ArrayList actions = (ArrayList) map.get("alter_actions");
+        for ( int i=0; i<actions.size(); i++){
+        	AlterTableAction action = (AlterTableAction)actions.get(i);
+        	String actionName = action.getAction();
+        	ArrayList parameters = action.getElements();        	       
+        	System.out.println("the alter action : "+actionName);
+            if (actionName.equalsIgnoreCase("ADD")) {
+                	ColumnDef cdef = (ColumnDef)parameters.get(0);
+                	System.out.println("the add action parameters : "+cdef.name);
+            }
+            else if (actionName.equalsIgnoreCase("DROP")){
+                	System.out.println("the drop action parameters : "+parameters.get(0));
+            }
+        }       
+    }       
+	}
+	
+}
+
+PARSER_END(SQL)
+
+
+SKIP : {
+
+  " "
+| "\t"
+| "\n"
+| "\r"
+|  <"//" (~["\n","\r"])* ("\n" | "\r" | "\r\n")>
+|  <"--" (~["\n","\r"])* ("\n" | "\r" | "\r\n")>
+|  <"/*" (~["*"])* "*" ("*" | ~["*","/"] (~["*"])* "*")* "/">
+
+}
+
+TOKEN : {
+
+  <STAR:       "*" >
+| <COLON:			 ":">
+| <EQUALS:     "=" >
+| <GR:         ">" >
+| <LE:         "<" >
+| <GREQ:       ">=" >
+| <LEEQ:       "<=" >
+| <NOTEQ:      "!=" | "<>" >
+| <DIVIDE:     "/" >
+| <ADD:        "+" >
+| <MOD:        "%"|"mod"|"MOD">
+| <SUBTRACT:   "-" >
+| <CONCAT:     "||" >
+| <DOT:			 	 "." >
+| <COMA: 		 	 "," >
+| <LPAR:		 	 "(" >
+| <RPAR:			 ")" >
+
+}
+
+TOKEN [IGNORE_CASE] : {
+  
+    <BOOLEAN_LITERAL: "true" | "false" >
+  | <NULL_LITERAL:    "null" > 
+  
+}
+
+TOKEN [IGNORE_CASE] : { /* KEYWORDS */
+
+  <DROP:        "drop">
+| <SHOW:        "show">
+| <ALTER:       "alter">
+| <SELECT:      "select"|"sel">
+| <UPDATE:      "update">
+| <CREATE:      "create">
+| <DELETE:      "delete"|"del">
+| <INSERT:      "insert" | "ins">
+|	<REPLACE:			"replace">
+| <COMMIT:      "commit">
+| <COMPACT:     "compact">
+| <EXPLAIN:     "explain">
+| <ROLLBACK:    "rollback">
+| <OPTIMIZE:    "optimize">
+| <SHUTDOWN:    "shutdown">
+| <FORMAT:			"format">
+| <TITLE:				"title">
+| <UPPERCASE:		"uppercase">
+| <CASESPECIFIC:"casespecific">
+| <PARTITION:		"partition">
+| <BY:					"by">
+| <HASH:				"hash">
+| <CASE:				"case">
+| <ELSE:				"else">
+| <WHEN:				"when">
+| <THEN:				"then">
+| <END:					"end">
+
+
+| <IS:          "is">
+| <AS:          "as">
+| <ON:          "on">
+| <IF:          "if">
+| <TO:          "to">
+| <NO:          "no">
+| <ALL:         "all">
+| <ANY:         "any">
+| <SET:         "set">
+| <USE:         "use">
+| <ASC:         "asc">
+| <OLD:         "old">
+| <NEW:         "new">
+| <SQLADD:      "add">
+| <FOR:         "for">
+| <ROW:         "row">
+| <EACH:        "each">
+| <CALL:        "call">
+| <BOTH:        "both">
+| <SOME:        "some">
+| <FROM:        "from">
+| <LEFT:        "left">
+| <DESC:        "desc">
+| <INTO:        "into">
+| <JOIN:        "join">
+| <TRIM:        "trim">
+| <VIEW:        "view">
+| <LOCK:        "locking"|"lock">
+| <WITH:        "with">
+| <USER:        "user">
+| <CAST:        "cast">
+| <LONG:        "long">
+| <AFTER:       "after">
+| <START:       "start">
+| <COUNT:       "count">
+| <WHERE:       "where">
+| <NAMED:		"named">
+| <RIGHT:       "right">
+| <TABLE:       "table">
+| <LIMIT:       "limit">
+| <INNER:       "inner">
+| <INDEX:       "index">
+| <CROSS:       "cross">
+| <OUTER:       "outer">
+| <CHECK:       "check">
+| <USING:       "using">
+| <UNION:       "union">
+| <GRANT:       "grant">
+//| <USAGE:       "usage">
+| <BEFORE:      "before">
+| <UNLOCK:      "unlock">
+| <GROUPS:      "groups">
+| <REVOKE:      "revoke">
+| <OPTION:      "option">
+| <EXCEPT:      "except">
+| <IGNORE:      "ignore">
+| <EXISTS:      "exists">
+| <VALUES:      "values">
+| <HAVING:      "having">
+| <QUALIFY:			"qualify">
+| <UNIQUE:      "unique">
+| <SQLCOLUMN:   "column">
+| <ACCOUNT:     "account">
+| <LEADING:     "leading">
+| <NATURAL:     "natural">
+| <BETWEEN:     "between">
+| <TRIGGER:     "trigger">
+| <SQLDEFAULT:  "default">
+| <VARYING:     "varying">
+| <EXECUTE:     "execute">
+| <CALLBACK:    "callback">
+| <MINVALUE:    "minvalue">
+| <MAXVALUE:    "maxvalue">
+//| <FUNCTION:    "function">
+//| <SEQUENCE:    "sequence">
+| <RESTRICT:    "restrict">
+| <PASSWORD:    "password">
+| <TRAILING:    "trailing">
+//| <NOTNULL:     "not null">
+| <GROUP:     "group">
+| <ORDER:     "order">
+| <DEFERRED:    "deferred">
+| <DISTINCT:    "distinct">
+| <LANGUAGE:    "language">
+| <INCREMENT:   "increment">
+| <PROCEDURE:   "procedure">
+| <CHARACTER:   "character">
+| <IMMEDIATE:   "immediate">
+| <INITIALLY:   "initially">
+| <TEMPORARY:   "temporary">
+| <INTERSECT:   "intersect">
+| <MINUS:				"minus">
+| <PRIVILEGES:  "privileges">
+| <CONSTRAINT:  "constraint">
+| <REFERENCES:  "references">
+| <MULTISET:		"multiset">
+| <GLOBAL:			"global">
+| <VOLATILE:		"volatile">
+| <FALLBACK:		"fallback">
+| <LOG:					"log">
+| <JOURNAL:			"journal">
+| <PROTECTION:	"protection">
+| <CHECKSUM:		"checksum">
+| <FREESPACE:		"freespace">
+| <DATABLOCKSIZE: "datablocksize">
+| <DUAL:				"dual">
+| <LOCAL:				"local">
+| <MEDIUM:			"medium">
+| <HIGH:				"high">
+| <LOW:					"low">
+| <PERCENT:			"percent">
+| <MINIMUM:			"minimum">
+| <MAXIMUM:			"maximum">
+| <NONE:				"nome">
+| <RANGE_N:			"range_n">
+| <ACCESS:			"access">
+| <EXCLUSIVE:		"exclusive"|"excl">
+| <SHARE:				"share">
+| <READ:				"read">
+| <WRITE:				"write">
+| <NOWAIT:			"nowait">
+| <MODE:				"mode">
+| <DATABASE:		"database">
+| <MACRO:				"macro">
+| <RANGE:			"range">
+| <SUBSTR:		  "substr"|"substring">
+| <CSUM:				"csum">
+| <AVERAGE:			"average"|"avg"|"ave">
+| <KURTOSIS:		"kurtosis">
+| <PERCENT_RANK: "percent_rank">
+| <MAX:					"maxium"|"max">
+| <MIN:					"minimum"|"min">
+| <SUM:					"sum">
+| <CASE_N:			"case_n">
+| <UNKNOWN:			"unknown">
+| <SKEW:				"skew">
+| <STDDEV_POP:	"stddev_pop">
+| <STDDEV_SAMP: "stddev_samp"> 
+| <VAR_POP:			"var_pop"> 
+| <VAR_SAMP:		"var_samp">
+| <ADD_MONTHS:  "add_months">
+| <POSITION:		"position">
+| <COMPRESS:		"compress">
+| <PRESERVE:    "preserve">
+| <ROWS:				"rows">
+| <ROW_NUMBER:	"row_number">
+| <ROLLUP:		"rollup">
+| <OVER: 		"over">
+| <SAMPLE:		"sample">
+| <EXTRACT:		"extract">
+| <CHARACTER_LENGTH: "character_length">
+| <CHAR_LENGTH:		"char_length">
+| <INTERVAL:	"interval">
+| <YEAR:		"year">
+| <MONTH:		"month">
+| <DAY:			"day">
+| <HOUR:		"hour">
+| <MINUTE:		"minute">
+| <SECOND:		"second">
+| <TIMEZONE_HOUR:	"timezone_hour">
+| <TIME_ZONE_MINUTE: "time_zone_minute">
+| <COALESCE:	"coalesce">
+| <PRIMARY:     "primary">
+| <FOREIGN:     "foreign">
+| <KEY:         "key">
+| <DATA:				"data">
+| <RANK:		"rank">
+| <FULL:		"full">
+| <RENAME:		"rename">
+| <ZONE:		"zone">
+
+| <GENERATED:   "generated">
+| <CYCLE:		"cycle">
+| <IDENTITY:	"identity">
+| <UNBOUNDED:	"unbounded">
+| <PRECEDING:	"preceding">
+| <CURRENT:		"current">
+
+
+| <INDEX_NONE:  "index_none">
+| <INDEX_BLIST: "index_blist">
+
+| <GROUPMAX:    "group max">
+
+| <COLLATE:     "collate">
+
+// Collate strengths,
+
+| <PRIMARY_STRENGTH:   "primary_strength">
+| <SECONDARY_STRENGTH: "secondary_strength">
+| <TERTIARY_STRENGTH:  "tertiary_strength">
+| <IDENTICAL_STRENGTH: "identical_strength">
+
+// Collate decomposition levels,
+
+| <NO_DECOMPOSITION:        "no_decomposition">
+| <CANONICAL_DECOMPOSITION: "canonical_decomposition">
+| <FULL_DECOMPOSITION:      "full_decomposition">
+
+//FUNCTION
+| <FUNCTION:	"LOWER"|"UPPER"|"QUANTILE"|"NULLIFZERO"|"ZEROIFNULL"|"ABS"
+							|"NULLIF"|"EXP"|"LN"|"LOG"|"RANDOM"|"SQRT"|"WIDTH_BUCKET"
+							|"COS"|"SIN"|"TAN"|"ACOS"|"ASIN"|"ATAN"|"ATAN2"|"COSH"|"SINH"|"TANH"|"ACOSH"|"ASINH"|"ATANH"
+							|"CORR"|"COVAR_POP"|"COVAR_SAMP"|"GROUPING"|"REGR_AVGX"|"REGR_AVGY"|"REGR_COUNT"|"REGR_INTERCEPT"|"REGR_R2"
+							|"REGR_SLOPE"|"REGR_SXX"|"REGR_SXY"|"REGR_SYY"|"MDIFF"|"MAVG"|"MLINREG"|"MSUM"
+							|"CHAR2HEXINT"|"SOUNDEX"|"VARGRAPHIC">
+
+// Data types,
+
+| <BIT:         "bit">
+| <INT:         "int"|"integer">
+| <REAL:        "real">
+| <CLOB:        "clob">
+| <BLOB:        "blob">
+| <CHAR:        "char">
+| <CHARACTERS:  "characters">
+| <CHARS:				"chars">
+| <DATE:        "date">
+| <TIME:        "time">
+| <FLOAT:       "float">
+| <BIGINT:      "bigint">
+| <DOUBLE:      "double">
+//| <STRING:      "string">
+| <BINARY:      "binary">
+| <NUMERIC:     "numeric">
+| <DECIMAL:     "decimal"|"dec">
+| <BOOLEAN:     "boolean">
+| <TINYINT:     "tinyint"|"byteint">
+| <INTEGER:     "integer">
+| <VARCHAR:     "varchar">
+| <SMALLINT:    "smallint">
+| <VARBINARY:   "varbinary">
+| <TIMESTAMP:   "timestamp">
+| <LONGVARCHAR: "longvarchar">
+| <LONGVARBINARY: "longvarbinary">
+| < BYTE: 			"byte" >
+| < KBYTE: 			"kbyte" >
+| < KILOBYTE:		"kilobyte" >
+| < BYTES: 			"bytes" >
+| < KBYTES: 		"kbytes" >
+| < KILOBYTES: 	"kilobytes" >
+
+| <TOP:		"top" >
+| <TIES:	"ties">
+| <CASCADE:                   "cascade">
+
+// Current date/time/timestamp literals
+
+| <CURRENT_TIME:      "current_time">
+| <CURRENT_DATE:      "current_date">
+| <CURRENT_TIMESTAMP: "current_timestamp">
+
+| <CHARACTER_SET:			"LATIN"|"UNICODE"|"GRAPHIC"|"KANJISJIS"|"KANJI1">
+
+//| <DATA_TYPE: "boolean" | "bit" | "tinyint" | "smallint" | "integer" | "bigint" | "float" | "real" |
+//              "double" | "numeric" | "decimal" | "char" | "varchar" | "longvarchar" | "string" |
+//              "date" | "time" | "timestamp" | "binary" | "varbinary" | "longvarbinary" >
+
+// NOTE: OPERATOR doesn't match '*' or '=' because we use * and = to mean different things
+//  <OPERATOR: ( "==" | ">" | "<" | ">=" | "<=" | "!=" | "<>" | "/" | "+" | "-" |
+//               "like" | "not like" | "regex" | "and" | "or" ) >
+
+| <LIKE:       "like" >
+//| <NOTLIKE:    "not like" >
+| <REGEX:      "regex" >
+| <AND:        "and" >
+| <OR:         "or" >
+| <IN:         "in" >
+//| <NOTIN:      "not in" >
+
+| <NOT:        "not">
+
+}
+
+TOKEN : {
+
+    <NUMBER_LITERAL:
+       ( ( (["0"-"9"])+ ( "." (["0"-"9"])+ )? )
+    | ( "." (["0"-"9"])+ ) )
+               ( ("E"|"e") (["-","+"])? (["0"-"9"])+ )? 
+//       (["-","+"])? ( ( (["0"-"9"])+ ( "." (["0"-"9"])+ )? )
+//                 |( "." (["0"-"9"])+ ) )
+//                            ( ("E"|"e") (["-","+"])? (["0"-"9"])+ )? 
+    
+//        ("-")? (["0"-"9"])+ "." (["0"-"9"])*
+//      | ("-")? "." (["0"-"9"])+
+//      | ("-")? (["0"-"9"])+
+//      | 
+    >
+  | <STRING_LITERAL:   "'" ( "''" | "\\" ["a"-"z", "\\", "%", "_", "'"] | ~["'","\\"] )* "'" | ("'0d'xcf") >
+//  | <STRING_LITERAL:   "'" ( "''" | ~["'","\n","\r","\\"] )* "'" >
+//  | <QUOTED_VARIABLE: "\"" ( ["a"-"z", "A"-"Z", "_", "0"-"9", "."] )* "\"" >
+  | <QUOTED_VARIABLE:   "\"" ( ~["\""] )* "\"" >
+  
+}
+
+TOKEN : {  /* IDENTIFIERS */
+
+  <IDENTIFIER: (<COLON>)* <LETTER> ( <LETTER> | <DIGIT> )* >
+| <DOT_DELIMINATED_REF: <IDENTIFIER> ( (" ")* "." (" ")* <IDENTIFIER> )* >
+| <QUOTED_DELIMINATED_REF: <QUOTED_VARIABLE> ( "." <QUOTED_VARIABLE> )* >
+| <JAVA_OBJECT_ARRAY_REF: <DOT_DELIMINATED_REF> "[]" >
+| <CTALIAS: <IDENTIFIER> >
+| <GLOBVARIABLE: <DOT_DELIMINATED_REF> ".*" >
+| <QUOTEDGLOBVARIABLE: <QUOTED_DELIMINATED_REF> ".*" >
+| <PARAMETER_REF: "?" >
+
+| <#LETTER: ["a"-"z", "A"-"Z", "_"] >
+| <#DIGIT: ["0"-"9"]>
+
+}
+
+
+Expression Test() :
+{ Expression exp; }
+{
+  ( exp = parseExpression() ";" )
+  
+  { return exp;}
+}
+
+
+// Parses a single expression.  Useed in 'com.teradata.sqlparser.node.Expression.parse' method.
+Expression parseExpression() :
+{ Expression exp;
+}
+{
+  exp = DoExpression() <EOF>
+  
+  { return exp; }
+}
+
+// Statement that ends with a ';'
+StatementTree Statement() :
+{ StatementTree ob; }
+{
+  (
+    (   ob=Select()
+      | ob=Update()
+      | ob=Alter()   
+      | ob=Create()
+      | ob=Drop()
+      | ob=Delete()
+      | ob=Insert() 
+  
+    )
+    ( ";" | <EOF> )
+  )
+
+  { return ob; }
+}
+  
+StatementTree Select() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.Select");
+  TableSelectExpression table_expr;
+  ArrayList order_by = new ArrayList();
+}
+{
+  ( table_expr = GetTableSelectExpression()  
+    [ <ORDER> <BY> SelectOrderByList(order_by) ]
+    [ <SAMPLE> <NUMBER_LITERAL> ]
+  )
+
+  { cmd.putObject("table_expression", table_expr);
+    cmd.putObject("order_by", order_by);
+    return cmd; }
+}
+
+// ----------
+
+
+// A priv object
+// Note we add a 2 character prefix to the priv object for future enhancements.
+// In the future an object may be something other than a table.
+String PrivObject() :
+{ String table_name;
+  String schema_name;
+}
+{
+  (   [ <TABLE> ] table_name=TableName() { return "T:" + table_name; }    
+  )
+}
+
+// A list of privs
+ArrayList PrivList(ArrayList list) :
+{
+}
+{
+        PrivListItem(list)
+  ( "," PrivListItem(list) )*
+  
+  { return list; }
+}
+
+// Adds an item in a priv list
+void PrivListItem(ArrayList list) :
+{ Token t;
+}
+{
+  (   t=<SELECT> 
+  	| t=<INSERT> 
+  	| t=<UPDATE> 
+  	| t=<DELETE>
+    | t=<REFERENCES> 
+    //| t=<USAGE> 
+    | t=<ALL> [ <PRIVILEGES> ]
+  )
+  
+  { list.add(t.image); }
+}
+
+
+// A table expression 
+TableSelectExpression GetTableSelectExpression() :
+{ TableSelectExpression table_expr = new TableSelectExpression();
+  String composite = "";
+  boolean is_all = false;
+  TableSelectExpression next_composite_expression;
+  ArrayList order_by = new ArrayList();
+}
+{
+  (		
+  		
+  		<SELECT>
+        [ table_expr.distinct = SetQuantifier() ]
+        [ topClause() ]
+        [ SelectColumnList(table_expr.columns) ]
+        [ <FROM> SelectTableList(table_expr.from_clause) ] 
+        [ LOOKAHEAD(2) ( <HAVING>| <QUALIFY> ) ConditionsExpression(table_expr.having_clause)]   
+        [ LOOKAHEAD(2) <GROUP> <BY> SelectGroupByList(table_expr.group_by)]
+        [ LOOKAHEAD(2) <ORDER> <BY> SelectOrderByList(order_by) ]
+	    [ LOOKAHEAD(2) <GROUPMAX> table_expr.group_max = GroupMaxColumn() ] 
+	    [ LOOKAHEAD(2) ( <HAVING>| <QUALIFY> ) ConditionsExpression(table_expr.having_clause)]       
+        [ <WHERE> ConditionsExpression(table_expr.where_clause) ]
+        [ LOOKAHEAD(2) ( <HAVING>| <QUALIFY> ) ConditionsExpression(table_expr.having_clause)] 	
+	    [ <GROUP> <BY> SelectGroupByList(table_expr.group_by)] 
+	    [ LOOKAHEAD(2) <ORDER> <BY> SelectOrderByList(order_by) ]
+	    [ <GROUPMAX> table_expr.group_max = GroupMaxColumn() ] 
+	    [ ( <HAVING>| <QUALIFY> ) ConditionsExpression(table_expr.having_clause)]	    
+        [ composite = GetComposite() [ <ALL> { is_all = true; } ]
+          next_composite_expression = GetTableSelectExpression()
+        { table_expr.chainComposite(next_composite_expression, composite, is_all); }
+        ]
+  )
+  { return table_expr; }
+}
+
+
+
+// Returning true means distinct, false means all.
+boolean SetQuantifier() :
+{}
+{  ( <DISTINCT> { return true; } |
+     <ALL>      { return false; } )
+}     
+
+void topClause() :
+{}
+{
+	<TOP>  [ LOOKAHEAD(2) <NUMBER_LITERAL>] [ <PERCENT> ] [ LOOKAHEAD(2) <WITH> <TIES> ]
+}
+
+ArrayList aliasListInFromClause(ArrayList list) :
+{ String col_name;
+}
+{
+        col_name = ColumnName() { list.add(col_name); }
+  ( "," col_name = ColumnName() { list.add(col_name); } )*
+
+  { return list; }
+}
+
+
+void SelectColumnList(ArrayList list) :
+{ SelectColumn col;
+}
+{	
+    col = SelectColumn() { list.add(col); }
+  ( LOOKAHEAD(2) "," col = SelectColumn() { list.add(col); } )* 
+	
+}
+
+SelectColumn SelectColumn() :
+{ SelectColumn col = new SelectColumn();
+  String aliased_name;
+  Token t;
+  TType type;
+}
+{ 
+   
+  	(	( col.expression = DoExpression() 
+  	    [ "(" 
+  	       [LOOKAHEAD(2)(col.formatStr = FormatStr() | type = GetTType() { col.formatStr = type.asEncodedString(type); }) ] 
+  	       [ <COMA> ]  	       
+  	       [ (col.titleStr = TitleStr() | (<CHARACTER> <SET> <CHARACTER_SET>)) ] 
+  	       [ <NAMED> SQLIdentifier() ]
+  	       ")"
+  	    ] 
+  	    [ <AS> ] [col.alias=TableAliasName() ] ) 
+    | ( ( t = <GLOBVARIABLE> | t = <STAR> ) {  col.glob_name = t.image; }))
+   
+  
+  { return col; }
+}
+
+void SelectGroupByList(ArrayList list) :
+{ ByColumn col;
+  Expression exp;
+}
+{
+    exp = DoExpression() { col = new ByColumn();
+                           col.exp = exp;
+                           list.add(col); }
+  ( "," exp = DoExpression() { col = new ByColumn();
+                               col.exp = exp;
+                               list.add(col); } )*
+  
+}
+
+/**
+ * NOTE: This is an extension, allows for us to specify a column to return the
+ *  max value for each row representing a group.
+ */
+Variable GroupMaxColumn() :
+{ Variable var; }
+{
+  var = ColumnNameVariable()
+  { return var; }
+}
+
+
+
+void SelectOrderByList(ArrayList list) :
+{ ByColumn col;
+  Expression exp;
+  boolean ascending = true;
+}
+{
+    exp = DoExpression() [ ascending=OrderingSpec() ]
+                         { col = new ByColumn();
+                           col.exp = exp;
+                           col.ascending = ascending;
+                           list.add(col); }
+  ( "," exp = DoExpression() { ascending=true; } [ ascending=OrderingSpec() ]
+                         { col = new ByColumn();
+                           col.exp = exp;
+                           col.ascending = ascending;
+                           list.add(col); } )*
+  
+}
+
+boolean OrderingSpec() :
+{}
+{
+  ( <ASC> { return true; } | <DESC> { return false; } )
+  
+  { return true; }
+}
+
+
+void TableDeclaration(FromClause from_clause) :
+{ String table=null, declare_as = null;
+  TableSelectExpression select_stmt = null;
+  ArrayList aliasList = new ArrayList();
+}
+{
+
+  ( ( table=TableName() | "(" select_stmt=GetTableSelectExpression() ")" )
+    [ [ <AS> ] declare_as=TableName() ] 
+    [ "(" aliasList = aliasListInFromClause(from_clause.aliasInFromClause) ")" ]
+  )
+  
+  {
+  	if ( select_stmt != null ) select_stmt.aliasList = aliasList; 
+  	from_clause.addTableDeclaration(table, select_stmt, declare_as); 
+  }
+
+}
+
+void SelectTableList(FromClause from_clause) :
+{}
+{
+  TableDeclaration(from_clause) [ FromClauseJoin(from_clause) ]
+}
+
+void FromClauseJoin(FromClause from_clause) :
+{ Expression on_expression=null; }
+{ 
+  (
+      (
+        ","
+        { from_clause.addJoin(JoiningSet.INNER_JOIN);}
+      ) [ SelectTableList(from_clause) ]
+    | (
+        [ <INNER> ] <JOIN> TableDeclaration(from_clause) <ON> on_expression=DoExpression()
+        { from_clause.addPreviousJoin(JoiningSet.INNER_JOIN, on_expression); }
+        [ LOOKAHEAD(2) <WHERE> DoExpression() ]
+      ) [ FromClauseJoin(from_clause) ]
+    | (
+        <CROSS> <JOIN> TableDeclaration(from_clause) [ <ON> on_expression=DoExpression()]
+        { from_clause.addPreviousJoin(JoiningSet.CROSS_JOIN, on_expression); }
+        [ LOOKAHEAD(2) <WHERE> DoExpression() ]
+      ) [ FromClauseJoin(from_clause) ]
+    | (
+        <LEFT> [<OUTER>] <JOIN> TableDeclaration(from_clause) <ON> on_expression=DoExpression()
+        { from_clause.addPreviousJoin(JoiningSet.LEFT_OUTER_JOIN, on_expression); }
+        [ LOOKAHEAD(2) <WHERE> DoExpression() ]
+      ) [ FromClauseJoin(from_clause) ]
+    | (
+        <RIGHT> [<OUTER>] <JOIN> TableDeclaration(from_clause) <ON> on_expression=DoExpression()
+        { from_clause.addPreviousJoin(JoiningSet.RIGHT_OUTER_JOIN, on_expression); }
+        [ LOOKAHEAD(2) <WHERE> DoExpression() ]
+      ) [ FromClauseJoin(from_clause) ]
+    | (
+        <FULL> [<OUTER>] <JOIN> TableDeclaration(from_clause) <ON> on_expression=DoExpression()
+        { from_clause.addPreviousJoin(JoiningSet.FULL_OUTER_JOIN, on_expression); }
+        [ LOOKAHEAD(2)<WHERE> DoExpression() ]
+      ) [ FromClauseJoin(from_clause) ]
+  )
+
+}
+
+
+
+// A list of column names
+ArrayList BasicColumnList(ArrayList list) :
+{ String col_name=null;
+}
+{
+      (  col_name = ColumnName() [ "(" [ <NOT> ] <CASESPECIFIC> ")" ] ) { list.add(col_name); }
+  ( "," ( col_name = ColumnName() ) { list.add(col_name); } [ "(" [ <NOT> ] <CASESPECIFIC> ")" ] )*
+
+  { return list; }
+}
+
+
+void ConditionsExpression(SearchExpression se) :
+{ Expression exp; }
+{
+  exp = DoExpression()
+
+  { se.setFromExpression(exp); }
+}
+
+
+
+Expression ExpressionTest() :
+{ Expression exp; }
+{
+  exp=DoExpression() ";"
+
+  { return exp; }
+}  
+
+Expression DoExpression() :
+{ Stack stack = new Stack();
+  Expression exp = new Expression();
+}
+{
+
+  expression(exp, stack)
+
+  { expEnd(exp, stack);
+    // Normalize the expression (remove any NOT operators)
+    Expression normalized_exp = Util.normalize(exp);
+    normalized_exp.copyTextFrom(exp);
+    return normalized_exp;
+  }
+}
+
+Expression DoNonBooleanExpression() :
+{ Stack stack = new Stack();
+  Expression exp = new Expression();
+}
+{
+
+  nonBooleanExpression(exp, stack)
+
+  { expEnd(exp, stack);
+    return exp; }
+}
+
+
+/**
+ * Parse an expression.
+ */
+void expression(Expression exp, Stack stack) :
+{ 
+}
+{
+
+  Operand(exp, stack) ( LOOKAHEAD(2) OpPart(exp, stack) )* 
+
+}
+
+/**
+ * Parses a non-boolean expression.
+ */
+void nonBooleanExpression(Expression exp, Stack stack) :
+{
+}
+{
+  
+  Operand(exp, stack)
+     ( LOOKAHEAD(2) (  StringOperator(exp, stack)
+                     | NumericOperator(exp, stack) ) Operand(exp, stack) )* 
+
+}
+
+void OpPart(Expression exp, Stack stack) :
+{ Token t;
+//  SelectStatement select;
+//  Expression[] exp_arr;
+//  Expression regex_expression;
+// Object regex_ob;  
+	ArrayList list = new ArrayList();
+}
+{
+
+  (   LOOKAHEAD(3) (   BooleanOperator(exp, stack)
+                     | NumericOperator(exp, stack)
+                     | StringOperator(exp, stack) )
+                   [ <ANY> ] [<ALL>] [<SOME>] ( LOOKAHEAD(3) Operand(exp, stack)| LOOKAHEAD(3)SubQueryExpression(exp, stack) )    
+    | LOOKAHEAD(2) SubQueryOperator(exp, stack) SubQueryExpression(exp, stack) 	
+    | LOOKAHEAD(2) SubQueryExpression(exp, stack)     
+    | BetweenPredicate(exp, stack) 
+
+  )
+  
+}  
+  
+
+void Operand(Expression exp, Stack stack) :
+{ Token t = null;
+	Token tt = null;
+  FunctionDef f = null;
+  Expression exp1 = null;
+  Expression[] exp_list=null;
+  String time_fname;
+  String fname = "";
+  String temp = "";
+  boolean negative = false;
+  Object param_ob;
+  ArrayList list = new ArrayList();
+}
+{
+ ( 
+ 	LOOKAHEAD(3) "(" { stack.push(Operator.get("(")); exp.text().append("("); }
+        expression(exp, stack) ( "," expression(exp, stack) )* ")" { expEndParen(exp, stack); exp.text().append(")"); } [( <YEAR> | <MONTH> | <DAY> ) [ LOOKAHEAD(2)  "(" PositiveIntegerConstant() ")" ] ] [ LOOKAHEAD(2) "(" GetTType() ")"]
+    | LOOKAHEAD(2) <NOT>
+      { expOperator(exp, stack, Operator.get("not"));
+        exp.text().append(" not ");
+      }
+      Operand(exp, stack)
+    | LOOKAHEAD(2) <SUBTRACT>
+      { exp.text().append("-");
+      }
+      Operand(exp, stack)  
+          
+    | LOOKAHEAD(3)   f = Function()  [( <YEAR> | <MONTH> | <DAY> ) [ LOOKAHEAD(2)  "(" PositiveIntegerConstant() ")" ] ] [ LOOKAHEAD(2) [<INTERVAL>] <HOUR> <TO> <SECOND>] [ LOOKAHEAD(2) "(" GetTType() ")"]
+    	 { exp.addElement(f); exp.text().append(f); }
+		[ <OVER> "(" exp1 = overExp()  ")" { exp.concat(exp1); exp.text().append(" OVER("); exp.text().append(exp1.text()); exp.text().append(")");}]
+    // Time values
+		| ( (   tt=<DATE> { time_fname="DATEOB"; }
+      			| tt=<TIME> { time_fname="TIMEOB"; } 
+      			| tt=<TIMESTAMP> { time_fname="TIMESTAMPOB"; }
+    		)
+		    [LOOKAHEAD(2) t=<STRING_LITERAL> ] 
+		    {
+		      if (t!=null){
+			      Object param_ob1 = Util.toParamObject(t, case_insensitive_identifiers);
+			      exp_list = new Expression[] { new Expression(param_ob1) };			   
+			      f = Util.resolveFunctionName(time_fname, exp_list);
+			      exp.addElement(f);
+			      exp.text().append(tt.image).append(" ").append(t.image);	
+			  }
+			  else
+			  	 exp.text().append(tt.image);			  
+		    }
+      	)
+
+    // Current timestamp
+	  | ( (   tt=<CURRENT_TIMESTAMP> { time_fname="TIMESTAMPOB"; }
+     		 	| tt=<CURRENT_TIME>      { time_fname="TIMEOB"; }
+     			| tt=<CURRENT_DATE>      { time_fname="DATEOB"; }
+    	  )
+		    { exp_list = new Expression[0];
+		      f = Util.resolveFunctionName(time_fname, exp_list);
+		      exp.addElement(f);
+		      exp.text().append(tt.image);
+		    }   
+		)
+      | ( [ <ADD> | <SUBTRACT> { negative = true; } ]
+	       (
+	            t=<NUMBER_LITERAL>
+	          | t=<STRING_LITERAL>
+	          | t=<QUOTED_VARIABLE>        // (eg. '"rel1"')
+	          | t=<DOT_DELIMINATED_REF>    // (eg. 're1.re2.id')
+	          | t=<QUOTED_DELIMINATED_REF> // (eg. '"re1"."re2"."id"')
+	          | t=SQLIdentifier() [LOOKAHEAD(2) (<ASC> | <DESC>) ]	          	          	          
+	        ) [ LOOKAHEAD(2) "(" [ <NOT> ] <CASESPECIFIC> ")" ] 
+	          [( <YEAR> | <MONTH> | <DAY> ) [ LOOKAHEAD(2)  "(" PositiveIntegerConstant() ")" ] ]
+	          [ LOOKAHEAD(2) "(" GetTType() ")"]
+	          [ LOOKAHEAD(2) <IS> <NOT> <NULL_LITERAL> ]
+  		  ) { if (t.kind == SQLConstants.NUMBER_LITERAL) {
+	            param_ob = Util.parseNumberToken(t, negative);
+	            exp.addElement(param_ob);
+	          }
+	          else {
+	            param_ob = Util.toParamObject(t, case_insensitive_identifiers); 
+	            if (negative) {
+	              exp.addElement(Util.zeroNumber());
+	              exp.addElement(param_ob);
+	              exp.addElement(Operator.get("-"));
+	            }
+	            else {
+	              exp.addElement(param_ob);
+	            }
+	          }
+	          if (negative) {
+	            exp.text().append('-');
+	          }
+	          exp.text().append(t.image);          
+	        } 	   
+	    | [ <NOT> ] <EXISTS>		
+	    | temp = FormatStr() 
+	    	{
+	    		exp.text().append(temp);
+	    	}
+	    | temp = TitleStr() 
+	    	{
+	    		exp.text().append(temp);
+	    	}
+	    | <NULL_LITERAL>    
+	    	{ 
+	    		exp.text().append("NULL");
+	    	}   
+	    | exp1 = intervalExpression()	
+	    	{
+	    		exp.text().append(exp1.text().toString()); 
+	    	}
+	    | exp1 =  caseExpression() [ LOOKAHEAD(2) "(" GetTType() ")"]
+	    	{
+	    		exp.concat(exp1);
+	    		exp.text().append(exp1.text().toString()); 
+	    	}  
+  	)   
+ 
+}
+
+void SubQueryExpression(Expression exp, Stack stack) :
+{ TableSelectExpression select;
+  Expression[] exp_arr;
+}
+{
+  // Parse the subquery list (either a list or a select statement)
+  "("
+  (   select=GetTableSelectExpression()
+      { exp.addElement(select);
+        exp.text().append(" [SELECT]"); }
+    | exp_arr=ExpressionList()
+      { exp.addElement(Util.toArrayParamObject(exp_arr));
+        exp.text().append(" (" + Util.expressionListToString(exp_arr) + ")");
+      }
+  )
+  ")"
+}
+
+
+// Parses a simple positive integer constant.
+int PositiveIntegerConstant() :
+{ Token t;
+}
+{
+  t = <NUMBER_LITERAL>
+
+  { int val = Integer.parseInt(t.image);
+    if (val < 0) generateParseException();
+    return val;
+  }
+}
+
+
+void SubQueryOperator(Expression exp, Stack stack) :
+{ Token t;
+  String op_string;
+  String query_type = "SINGLE";
+  Operator op;
+  ArrayList column_list = new ArrayList();
+}
+{	
+  (   	
+  	LOOKAHEAD(2)  (   <IN> { op = Operator.get("IN"); }
+                     | <NOT> <IN> { op = Operator.get("NOT IN"); }
+      			  )    
+    | 			  (  op_string = GetSubQueryBooleanOperator() { op = Operator.get(op_string); }
+    				[ ( t=<ANY> | t=<ALL> | t=<SOME> ) { query_type=t.image; } ]
+    				{ op = op.getSubQueryForm(query_type);}		
+     			  )
+  )
+
+  { expOperator(exp, stack, op);
+    exp.text().append(" " + op + " ");
+  }          
+  
+}
+
+Expression intervalExpression() :
+{
+	Token t,t1;
+	Expression exp = new Expression();
+}
+{
+	t = <INTERVAL> { exp.concat(new Expression(t)); exp.text().append("INTERVAL "); }
+	[ "-" { exp.text().append("- "); } ] t1 = <STRING_LITERAL> { exp.text().append(t1.image); }
+	(   LOOKAHEAD(2) (<YEAR> <TO> <MONTH> { exp.text().append(" YEAR TO MONTH "); }) 
+		| <DAY> { exp.text().append(" DAY "); } 
+		| LOOKAHEAD(2) <YEAR> { exp.text().append(" YEAR "); }
+		| <MONTH> { exp.text().append(" MONTH "); } 
+	)
+	{
+		return exp;
+	}
+}
+
+void BetweenPredicate(Expression exp, Stack stack) :
+{ boolean not_s = false;
+  Expression exp1, exp2;
+  Token t;
+}
+{   [ <NOT> { not_s = true; } ] <BETWEEN>
+           ( exp1=DoNonBooleanExpression() | t=<STAR> {exp1=new Expression(t);}) <AND> ( exp2=DoNonBooleanExpression() | t=<STAR>{exp2=new Expression(t);})
+
+  { // Flush the operator stack to precedence 8
+    flushOperatorStack(exp, stack, 8);
+    // Get the end expression
+    Expression end_exp = exp.getEndExpression();
+    if (not_s) {
+      exp.concat(exp1);
+      exp.addElement(Operator.get("<"));
+      exp.concat(end_exp);
+      exp.concat(exp2);
+      exp.addElement(Operator.get(">"));
+      exp.addElement(Operator.get("or"));
+      exp.text().append(" not between ");
+    }
+    else {
+      exp.concat(exp1);
+      exp.addElement(Operator.get(">="));
+      exp.concat(end_exp);
+      exp.concat(exp2);
+      exp.addElement(Operator.get("<="));
+      exp.addElement(Operator.get("and"));
+      exp.text().append(" between ");
+    }
+    exp.text().append(exp1.text().toString());
+    exp.text().append(" and ");
+    exp.text().append(exp2.text().toString());
+
+  }
+
+}
+
+void BooleanOperator(Expression exp, Stack stack) :
+{ Token t;
+  String op_string;
+  Operator op;
+}
+{
+  (   op_string = GetBooleanOperator() { op = Operator.get(op_string); }
+  )
+
+  { expOperator(exp, stack, op);
+    exp.text().append(" " + op + " ");
+  }          
+}
+
+void NumericOperator(Expression exp, Stack stack) :
+{ Token t;
+  String op_string;
+  Operator op;
+}
+{
+  (   op_string = GetNumericOperator() { op = Operator.get(op_string); }
+  )
+
+  { expOperator(exp, stack, op);
+    exp.text().append(" " + op + " ");
+  }          
+}
+
+void StringOperator(Expression exp, Stack stack) :
+{ Token t;
+  String op_string;
+  Operator op;
+}
+{
+  (   op_string = GetStringOperator() { op = Operator.get(op_string); }
+  )
+
+  { expOperator(exp, stack, op);
+    exp.text().append(" " + op + " ");
+  }          
+}
+
+String GetBooleanOperator() :
+{ Token t;
+}
+{
+  (   t=<EQUALS> | t=<GR> | t=<LE> | t=<GREQ> | t=<LEEQ>
+    | t=<NOTEQ>
+    | LOOKAHEAD(2) <IS> <NOT> { return "IS NOT"; } | t=<IS> 
+    | t=<LIKE> | <NOT> <LIKE> { return "NOT LIKE"; }
+    | t=<AND> | t=<OR>
+  )
+  { return t.image; }
+}
+
+String GetSubQueryBooleanOperator() :
+{ Token t;
+}
+{
+  (   t=<EQUALS> | t=<GR> | t=<LE> | t=<GREQ> | t=<LEEQ> | t=<NOTEQ>
+  )
+  { return t.image; }
+}
+
+String GetNumericOperator() :
+{ Token t;
+}
+{
+   (   t=<DIVIDE> | t=<ADD> | t=<SUBTRACT>
+     | t=<STAR> [ <STAR> ]
+     | t=<MOD>
+   )
+   { return t.image; }
+}
+
+String GetStringOperator() :
+{ Token t;
+}
+{
+   ( t=<CONCAT> )
+   { return t.image; }
+}
+
+
+
+Token FunctionIdentifier() :
+{ Token t;
+}
+{
+  ( t = <IF> | t = <USER> | t = <IDENTIFIER> )
+  { return t; }
+}
+
+Token SpecailFunction()	:
+{
+	Token t;
+}
+{
+	( t = <AVERAGE> |
+	  t = <KURTOSIS> | 
+	  t = <MAX> | 
+	  t = <MIN> | 
+	  t = <SUM> | 
+	  t = <SKEW> | 
+	  t = <STDDEV_POP> | 
+	  t = <STDDEV_SAMP> | 
+	  t = <VAR_POP> | 
+	  t = <VAR_SAMP>|
+	  t = <ROW_NUMBER>|
+	  t = <RANK>|
+	  t = <PERCENT_RANK>|
+	  t = <CHARS>|	 
+	  t = <CHARACTERS>)
+	{ return t; }
+}
+
+FunctionDef Function() :
+{ Token t, t2 = null, t3 = null, t4, t5, t6, t7, t8 = null;
+  FunctionDef f;
+  Expression exp1, exp2, exp3;
+  Expression exp = new Expression();
+  Expression exp4 = null, exp5 = null, exp6 = null;
+  Expression[] exp_list, exp_list1, exp_list2,exp_list3;
+  TType cast_type = null;
+  String fname;
+  String eachstr;
+  String casenstr="";
+  String str="", str1=""; 
+}
+{
+  ( // COUNT function requires special handling,
+      ( t = <COUNT> "(" [ <DISTINCT> { t.image="COUNT"; } ] exp_list = FunctionParams() ")" )
+    // AVG function
+    | ( t = SpecailFunction() "(" [ <DISTINCT> { t.image=t.image; } ] exp_list = FunctionParams() [<ASC>|<DESC>] ")"  )    
+    // TRIM function  
+    | ( t = <TRIM> "(" [ LOOKAHEAD(3) [ t2=<LEADING> | t2=<BOTH> | t2=<TRAILING> ]
+                         [ t3=<STRING_LITERAL> ] <FROM> ] exp1=DoExpression() ")" ) 
+                        { exp_list = new Expression[3];
+                          String ttype = t2 == null ? "both" : t2.image.toLowerCase();
+                          Object str_char = t3 == null ? TObject.stringVal(" ") :
+                                                         Util.toParamObject(t3, case_insensitive_identifiers);
+                          exp_list[0] = new Expression(TObject.stringVal(ttype));
+                          exp_list[0].text().append("'" + ttype + "'");
+                          exp_list[1] = new Expression(str_char);
+                          exp_list[1].text().append("'" + str_char + "'");
+                          exp_list[2] = exp1;
+                          return Util.resolveFunctionName("TRIM", exp_list);
+                        }
+    //SUBSTR(SUBSTRING) function
+    | ( t = <SUBSTR> "(" exp = substrExp() ")")
+    									  {
+    									  	exp_list = new Expression[1];
+    									  	exp_list[0] = exp;
+    									  	//exp_list[0].text().append(exp.text());   	
+    									  	return Util.resolveFunctionName("SUBSTR", exp_list);
+    									  }
+    //CSUM function
+    | ( t = <CSUM> "(" exp1=DoExpression() <COMA> exp2=SortExpressionList() ")" )
+    										{
+    											exp_list = new Expression[2];
+    											exp_list[0] = exp1;
+    									  	exp_list[1] = exp2;    									  	 									  	
+    									  	return Util.resolveFunctionName("CSUM", exp_list);
+    										}
+    // CAST function
+    | ( t = <CAST> "(" exp1=DoExpression() <AS> [ cast_type=GetTType() ] [ t2 = <FORMAT>  t3 = <STRING_LITERAL> ] ")" ) 
+                        { exp_list = new Expression[1];
+                          String enc_form = "";
+                          if ( cast_type != null)
+                          		enc_form = TType.asEncodedString(cast_type);
+                          exp_list[0] = exp1;
+                          exp_list[0].text().append(" AS ");
+                          //exp_list[0] = new Expression(TObject.stringVal(enc_form));
+                          exp_list[0].text().append(enc_form);
+                          //exp_list[2] = exp;         
+                          if ( t2 != null){
+                          		exp_list[0].text().append(" FORMAT ");
+                          		exp_list[0].text().append(t3.image);
+                          }                 
+                          return Util.resolveFunctionName("CAST", exp_list);
+                        }
+    // RANGE_N function
+    //| ( t = <RANGE_N> "(" exp3=DoExpression() <EACH> { eachstr = " EACH "; } [ <INTERVAL> { eachstr = eachstr + " INTERVAL "; } ] ( t4 = <STRING_LITERAL> | t4 = <NUMBER_LITERAL>) { eachstr = eachstr + t4.image; } [ t5 = <IDENTIFIER> { eachstr = eachstr + " " + t5.image; } ] [ (t3 = <YEAR>| t3 = <MONTH>| t3 = <DAY>| t3 = <HOUR>| t3 = <MINUTE>| t3 = <SECOND>) { eachstr = eachstr + " " + t3.image; } ]  ")" )
+    //										{
+    //											exp_list1 = new Expression[1];                          
+    //                      exp_list1[0] = exp3;                          
+    //                      exp_list1[0].text().append(eachstr);
+    //                      return Util.resolveFunctionName("range_n", exp_list1);
+    //										}  
+     | ( t = <RANGE_N> "(" exp3=DoExpression() [ exp6 = eachExp() ]  [ "," [ <NO> <RANGE> { str = " , NO RANGE" ; } ( ( <OR> <UNKNOWN> ) { str = str + " OR UNKNOWN " ; } | (<COMA> <UNKNOWN> ) { str = str + " , UNKNOWN " ; } )] [ <UNKNOWN> { str = " UNKNOWN" ; }]] ")" )
+    										{
+    					  exp_list1 = new Expression[1];                          
+                          exp_list1[0] = exp3;
+                          if (exp6!=null){
+                          	exp_list1[0].concat(exp6);
+                          	exp_list1[0].text().append(exp6.text());  
+                          }                        
+                          exp_list1[0].text().append(str);
+                          return Util.resolveFunctionName("RANGE_N", exp_list1);
+    										}  
+    // CASE_N function
+    | ( t = <CASE_N> "(" exp3=CaseNExpression() <COMA> [ ( <NO> <CASE> { casenstr = " NO CASE "; } [ ( <OR> <UNKNOWN> { casenstr = casenstr + " OR UNKNOWN "; } ) | ( <COMA> <UNKNOWN> { casenstr = casenstr + " ,UNKNOWN "; } ) ] ) | <UNKNOWN> { casenstr = " UNKNOWN "; } ] ")" )
+    										{
+    											exp_list1 = new Expression[1];                          
+                          exp_list1[0] = exp3;   
+                          exp_list1[0].text().append(", ");                    
+                          exp_list1[0].text().append(casenstr);
+                          return Util.resolveFunctionName("case_n", exp_list1);
+                         }    
+	// CASE Expression
+    // | ( t = <CASE>  exp = caseExp()  t6 = <END> )
+	//    	{ 	    			
+	//    		exp_list2 = new Expression[1];	    		
+	//    		exp_list2[0] = exp;	  
+	//    		//exp_list2[0].text().append(exp.text());  		
+	//	    	//exp_list2[0] = new Expression(t6);
+	//	    	exp_list2[0].text().append(" END");
+	//    		return Util.resolveFunctionName("CASE", exp_list2);
+	//   	}		
+	
+    //FORMAT function
+    | (<FORMAT> "(" exp = DoExpression() ")" )
+    	{
+    		exp_list2 = new Expression[1];
+    		exp_list2[0] = exp;
+    		return Util.resolveFunctionName("FORMAT", exp_list2);
+    	}
+    //TITLE function
+    | (<TITLE> "(" exp = DoExpression() ")" )
+    	{
+    		exp_list2 = new Expression[1];
+    		exp_list2[0] = exp;
+    		return Util.resolveFunctionName("TITLE", exp_list2);
+    	}
+    
+    //ADD_MONTHS function   
+    //| ( t = <ADD_MONTHS> "(" ( ( [ t2 = <TIMESTAMP> { str = "TIMESTAMP "; } ] t3=<STRING_LITERAL> ) | t3=<CURRENT_DATE> ) "," [ "-" { str1 = " - "; } ] t4=<NUMBER_LITERAL> ")")
+    //| ( t = <ADD_MONTHS> "("  str = dateExpression() "," [ "-" { str1 = " - "; } ] t4=<NUMBER_LITERAL> ")")
+    | ( t = <ADD_MONTHS> "("  exp = dateExpression() "," [LOOKAHEAD(2) t2 = "-" { str1 = " - "; } ]  exp1 = dateExpression() ")")
+     		 						
+     						{
+     							exp_list2 = new Expression[2];
+     							exp_list2[0] = exp;     							    							
+     							exp_list2[1] = new Expression(t2);
+     							if ( t2 != null )
+     								exp_list2[1].text().append(t2.image);
+     							exp_list2[1].concat(exp1);
+     							//exp_list2[1] = exp1;
+     							exp_list2[1].text().append(exp1.text());
+     							return Util.resolveFunctionName("ADD_MONTHS", exp_list2);
+     						}
+    //POSITION function
+    | ( t = <POSITION> "(" exp = DoExpression() <IN> exp2 = DoExpression() ")" )
+    						{
+    							exp_list2 = new Expression[1];
+    							exp_list2[0] = exp;
+    							exp_list2[0].concat(exp2);
+    							exp_list2[0].text().append(" IN ");
+								exp_list2[0].text().append(exp2.text());
+								return Util.resolveFunctionName("POSITION", exp_list2);
+    						}
+    // CHAR function
+    | ( t = <CHAR>|<CHARACTER> "(" exp = DoExpression() ")" )
+    						{
+    							exp_list2 = new Expression[1];
+    							exp_list2[0] = exp;
+    							return Util.resolveFunctionName("CHAR", exp_list2);
+    						}
+    //ROW_NUMBER() function
+    //| ( t = <ROW_NUMBER> "(" ")" <OVER> "(" exp1 = overExp() ")")
+    //						{
+    //							exp_list2 = new Expression[1];  
+    //							exp_list2[0] = exp1;    							
+	//							return Util.resolveFunctionName("ROW_NUMBER() OVER", exp_list2);
+    //						}
+    //ROLLUP function
+    | ( t = <ROLLUP> "(" exp1 = columnExpressionList() ")" )
+    						{
+    							exp_list2 = new Expression[1];  
+    							exp_list2[0] = exp1;    							
+								return Util.resolveFunctionName("ROLLUP", exp_list2);
+    						}
+    //EXTRACT function
+    |( t = <EXTRACT> "(" exp = extractExp() ")" )
+    						{
+    							exp_list2 = new Expression[1];  
+    							exp_list2[0] = exp; 
+								//exp_list2[0].text().append(exp.text());   							
+								return Util.resolveFunctionName("EXTRACT", exp_list2);
+    						}
+	// CHARACTER_LENGTH function
+	| ( t = <CHARACTER_LENGTH> "(" exp = DoExpression() ")" )
+							{
+    							exp_list2 = new Expression[1];  
+    							exp_list2[0] = exp; 
+								//exp_list2[0].text().append(exp.text());   							
+								return Util.resolveFunctionName("CHARACTER_LENGTH", exp_list2);
+    						}
+    // CHAR_LENGTH function
+	| ( t = <CHAR_LENGTH> "(" exp = DoExpression() ")" )
+							{
+    							exp_list2 = new Expression[1];  
+    							exp_list2[0] = exp; 
+								//exp_list2[0].text().append(exp.text());   							
+								return Util.resolveFunctionName("CHAR_LENGTH", exp_list2);
+    						}
+    // COALESCE function
+    | ( t = <COALESCE> "(" exp = coalesceExp() ")" )
+    						{
+    							exp_list2 = new Expression[1];  
+    							exp_list2[0] = exp; 
+								//exp_list2[0].text().append(exp.text());   							
+								return Util.resolveFunctionName("COALESCE", exp_list2);
+    						}
+    //RANK function
+    //| LOOKAHEAD(3)( t = <RANK> "(" exp = SortExpressionList() ")" )
+    //						{
+    //							exp_list2 = new Expression[1];  
+    //							exp_list2[0] = exp;								  							
+	//							return Util.resolveFunctionName("RANK", exp_list2);
+    //						} 
+    //RANK() function
+    //| LOOKAHEAD(3)( t = <RANK> "(" ")" <OVER> "(" exp = overExp() ")" )
+    //						{
+    //							exp_list2 = new Expression[1];  
+    //							exp_list2[0] = exp;								  							
+	//							return Util.resolveFunctionName("RANK() OVER", exp_list2);
+    //						} 
+    //INDEX function
+    | ( t = <INDEX> "(" exp = DoExpression() "," exp2 = DoExpression() ")"  )
+    						{
+    							exp_list2 = new Expression[1];
+    							exp_list2[0] = exp;
+    							exp_list2[0].concat(exp2);
+    							exp_list2[0].text().append(" , ");
+								exp_list2[0].text().append(exp2.text());
+								return Util.resolveFunctionName("INDEX", exp_list2);
+    						} 
+    
+    // Standard functions.
+	  | ( t = <FUNCTION> "(" exp_list = FunctionParams() ")" )
+  )
+
+  { return Util.resolveFunctionName(t.image, exp_list); }  
+}
+
+
+Expression extractExp() :
+{
+	Expression e = new Expression();
+	Expression exp;
+	Token t;
+}
+{
+	(
+		t = <YEAR>
+		| t = <MONTH> 
+		| t = <DAY>
+		| t = <HOUR>
+		| t = <MINUTE>
+		| t = <SECOND>
+		| t = <TIMEZONE_HOUR>
+		| t = <TIME_ZONE_MINUTE>
+	) <FROM>  exp = DoExpression()
+	{
+		e.concat(new Expression(t));
+		e.text().append(t.image);
+		e.text().append(" FROM ");
+		e.concat(exp); 
+		e.text().append(exp.text());
+		return e;
+	}
+}
+
+Expression eachExp() :
+{
+	Expression e = new Expression();
+	Token t4,t5,t3,t;
+	String eachstr;
+}
+{
+	t = <EACH> { eachstr = " EACH"; } [ <INTERVAL> { eachstr = eachstr + " INTERVAL "; } ] 
+	( t4 = <STRING_LITERAL> | t4 = <NUMBER_LITERAL>) { eachstr = eachstr + t4.image; } 
+	[ t5 = <IDENTIFIER> { eachstr = eachstr + " " + t5.image; } ] 
+	[ (t3 = <YEAR>| t3 = <MONTH>| t3 = <DAY>| t3 = <HOUR>| t3 = <MINUTE>| t3 = <SECOND>) { eachstr = eachstr + " " + t3.image; } ]
+	{
+		e = new Expression(t);
+		e.text().append(eachstr);
+		return e;
+	} 
+}
+
+Expression coalesceExp() :
+{
+	Expression e = new Expression();
+	Expression exp1;
+}
+{
+	 exp1 = DoExpression() { e.concat(exp1); e.text().append(exp1.text()); } 
+	( <COMA>  exp1 = DoExpression() { e.text().append(","); e.concat(exp1); e.text().append(exp1.text()); } )*
+	{
+		return e;
+	}
+}
+
+Expression substrExp() :
+{
+	Expression e = new Expression();
+	Expression exp1, exp2, exp, exp3 = null;
+	Token t,t1,t2;
+}
+{
+	exp1=DoExpression() { e.concat(exp1); e.text().append(exp1.text()); }
+	[ ( t = <FROM>| t = <COMA> ) { e.text().append(" "); e.text().append(t.image); e.text().append(" "); } ] 
+	exp2 = DoExpression()  { e.concat(exp2); e.text().append(exp2.text()); }
+	[ ( t = <FOR>| t = <COMA>) exp3 = DoExpression() { e.text().append(" "); e.text().append(t.image); e.text().append(" "); e.concat(exp3); e.text().append(exp3.text()); } ]
+	{
+		return e;
+	}
+}
+
+Expression caseExp() :
+{
+	Expression e = new Expression();
+	Expression exp1 = null, exp2 = null, exp = null;
+}
+{
+	[ 
+		exp1=DoExpression() 
+		{
+			e.concat(exp1);
+		 	e.text().append(exp1.text());
+		}
+	] 
+	exp = WhenThenList() { e.concat(exp); e.text().append(exp.text()); }
+	[ 
+		exp2 = ElseExpression() 
+		{
+			e.concat(exp2);
+		 	e.text().append(exp2.text());
+		}
+	]
+	{
+		
+		return e;
+	}
+}
+
+Expression caseExpression() :
+{
+	Expression e = new Expression();
+	Expression exp1 = null, exp2 = null, exp = null;
+	Token t;
+}
+{
+	t = <CASE>
+	{
+		e.concat(new Expression(t));
+		e.text().append(t.image);		
+	}
+	[ 
+		exp1=DoExpression() 
+		{
+			e.concat(exp1);
+		 	e.text().append(exp1.text());
+		}
+	] 
+	exp = WhenThenList() { e.concat(exp); e.text().append(exp.text()); }
+	[ 
+		exp2 = ElseExpression() 
+		{
+			e.concat(exp2);
+		 	e.text().append(exp2.text());
+		}
+	]
+	<END>
+	{
+		e.text().append(" END");
+		return e;
+	}
+}
+
+Expression overExp() :
+{
+	Expression exp1 = null, exp2 = null;
+	Token t1 = null, t2 = null, t3 = null, t4 = null, t5 = null; 
+  	Expression e = new Expression();
+  	Expression e2 = new Expression();
+  	Expression e3 = new Expression();
+	//ArrayList order_by = new ArrayList();  	
+}
+{
+	[ t1 = <PARTITION> <BY>  exp1 = columnExpressionList() ] 
+	[ t2 = <ORDER> <BY> exp2 = SortExpressionList() ]
+	[ t3 = <ROWS> ( ( t4 = <UNBOUNDED> | t4 = <NUMBER_LITERAL> ) <PRECEDING>) | ( t5 = <CURRENT> <ROW> ) ]
+	{
+		if ( t1!=null ) {
+			e.concat(new Expression(t1));			
+			e.text().append(" PARTITION BY ");			
+			e.concat(exp1);
+			e.text().append(exp1.text());
+		}
+		if ( t2!=null ) {
+			e2.concat(new Expression(t2));
+			e2.text().append(" ORDER BY ");
+			e2.concat(exp2);
+			e2.text().append(exp2.text());
+		}
+		if ( t3!=null){
+			e3.text().append(" ROWS ");	
+			if ( t4 != null ){
+				e3.text().append(t4.image);
+				e3.text().append(" PRECEDING ");
+			}
+			else 
+				e3.text().append(" CURRENT ROW ");			
+		}
+		e2.concat(e3);
+		e2.text().append(e3.text());
+		e.concat(e2);
+		e.text().append(e2.text());
+		
+		//else{
+		//	e.concat(new Expression(TObject.stringVal(" ")));
+		//}
+				
+		return e;
+	}
+}
+
+Expression columnExpressionList() :
+{
+	Expression e = new Expression();
+  Expression e1;  
+}
+{
+	e1 = DoExpression() 
+	{
+		e.concat(e1);
+		e.text().append(e1.text());		 
+	}
+	
+	( 
+		<COMA> e1 = DoExpression()
+		{
+			e.concat(e1);
+			e.text().append(" , ");
+			e.text().append(e1.text());		  
+		}	
+	)*
+	{ return e; }
+}
+
+
+Expression dateExpression()	:
+{
+	Expression e = new Expression();
+	Expression exp;
+	Token t,t1;
+}
+{
+	(LOOKAHEAD(3) [ t = <TIMESTAMP> { e.concat(new Expression(t)); e.text().append("TIMESTAMP"); } ]  t1 = <STRING_LITERAL> { e.concat(new Expression(t1)); e.text().append(t1.image); }
+	| LOOKAHEAD(2) t = <CURRENT_DATE> { e.concat(new Expression(t)); e.text().append("CURRENT_DATE");  }
+	| LOOKAHEAD(2) t = <CURRENT_TIMESTAMP> { e.concat(new Expression(t)); e.text().append("CURRENT_TIMESTAMP"); }
+	| exp=DoExpression() { e.concat(exp); e.text().append(exp.text());  } //�˴�ֻ���cast����
+	)
+	{ return e; }	
+}
+
+
+
+String FormatStr()	:
+{	
+	Token t1, t2;
+	String str;
+}
+{
+	t1=<FORMAT> t2=<STRING_LITERAL> 
+	{
+		str = t1.image+" "+t2.image;				
+		return str;
+	}
+}
+
+String TitleStr()	:
+{	
+	Token t1, t2;
+	String str;
+}
+{
+	t1=<TITLE> t2=<STRING_LITERAL> 
+	{
+		str = t1.image+" "+t2.image;		
+		return str;
+	}
+}
+
+Expression CaseNExpression() :
+{
+	Expression e = new Expression();
+	Expression e1; 
+}
+{
+	e1 = DoExpression()
+	{
+		e.concat(e1);
+		e.text().append(e1.text());	  
+	}
+	(
+		LOOKAHEAD(2) <COMA> e1 = DoExpression()
+		{
+			e.concat(e1);
+			e.text().append(",");	
+			e.text().append(e1.text());	  
+		}
+	)*
+	{ return e; }
+}
+
+Expression SortExpressionList() :
+{
+	Expression e = new Expression();
+  Expression e1;  
+  String orderstr = " ASC";
+}
+{
+	e1 = DoExpression() [ <ASC>| <DESC>  { orderstr = " DESC"; } ]
+	{
+		e.concat(e1);
+		e.text().append(e1.text());	
+	  e.text().append(orderstr);	
+	}
+	
+	( 
+		<COMA> e1 = DoExpression() [ <ASC>| <DESC>  { orderstr = " DESC"; } ] 
+		{
+			e.concat(e1);
+			e.text().append(",");
+			e.text().append(e1.text());	
+	  	e.text().append(orderstr);	
+		}	
+	)*
+	{ return e; }
+}
+
+Expression WhenThenList() :
+{ 	
+	Expression e = new Expression();
+  Expression e1, e2;
+  Token t1, t2;
+}
+{
+  t1 = <WHEN> e1 = DoExpression() 
+  { e.concat(new Expression(t1)); 
+  	e.text().append(" WHEN ");
+  	e.concat(e1); 
+  	e.text().append(e1.text());
+  } 
+  t2 = <THEN> e2 = DoExpression() 
+  { e.concat(new Expression(t1)); 
+  	e.text().append(" THEN ");
+  	e.concat(e2); 
+  	e.text().append(e2.text());
+  }
+  ( <WHEN> e1 = DoExpression() 
+  	{ e.concat(new Expression(t1)); 
+  		e.text().append(" WHEN ");
+  		e.concat(e1); 
+  		e.text().append(e1.text());
+  	} 
+  	<THEN> e2 = DoExpression() 
+  	{ e.concat(new Expression(t1));
+  		e.text().append(" THEN "); 
+  		e.concat(e2); 
+  		e.text().append(e2.text());
+  	} 
+  )* 
+
+	{ return e; }
+}
+
+Expression ElseExpression()	:
+{
+	Expression e = new Expression();
+	Expression e1;
+	Token t1;
+}
+{
+	t1 = <ELSE> e1 = DoExpression() 
+	{ e.concat(new Expression(t1)); 
+		e.text().append(" ELSE ");
+		e.concat(e1); 
+		e.text().append(e1.text());
+	}	
+	{ return e; }
+}
+
+// Parameters for a function
+Expression[] FunctionParams() :
+{ Expression[] exp_list;
+}
+{
+  ( <STAR> { exp_list = FunctionFactory.GLOB_LIST; }
+    | exp_list = ExpressionList()
+  )
+  
+  { return exp_list; }
+}
+
+
+
+Expression[] ExpressionList() :
+{ ArrayList list = new ArrayList();
+  Expression e;
+}
+{
+  [ (LOOKAHEAD(3) e = DoExpression() | LOOKAHEAD(3) e = caseExpression()) { list.add(e); }
+    ( "," e = DoExpression() { list.add(e); }  )*
+  ]
+  
+  { return (Expression[]) list.toArray(new Expression[list.size()]); }
+}
+
+
+String GetComposite() :
+{ Token name; }
+{
+  ( name = <UNION> | name = <INTERSECT> | name = <MINUS> | name = <EXCEPT> )
+  
+  { return name.image; }
+}
+
+
+
+String TableName() :
+{ Token name;
+}
+{
+  ( name = <QUOTED_VARIABLE> | name = SQLIdentifier()
+    // |name = <OLD> | name = <NEW>
+    |name = <DOT_DELIMINATED_REF> | name = <QUOTED_DELIMINATED_REF>
+  )
+
+  { return Util.asNonQuotedRef(name); }
+
+}
+
+
+// Name of a constraint name
+String ConstraintName() :
+{ Token name; }
+{
+  ( name = <QUOTED_VARIABLE> | name = SQLIdentifier() )
+  
+  { return Util.asNonQuotedRef(name); }
+}
+
+// Parses a column name  
+String ColumnName() :
+{ Token name; }
+{
+  ( name = <QUOTED_VARIABLE> | name = SQLIdentifier() |
+    name = <DOT_DELIMINATED_REF> | name = <QUOTED_DELIMINATED_REF> )
+
+  { return Util.asNonQuotedRef(name); }
+}
+
+// Parses a column name as a Variable object  
+Variable ColumnNameVariable() :
+{ Token name; }
+{
+  ( name = <QUOTED_VARIABLE> | name = SQLIdentifier() |
+    name = <DOT_DELIMINATED_REF> | name = <QUOTED_DELIMINATED_REF> )
+
+  { return (Variable) Util.toParamObject(name, case_insensitive_identifiers); } 
+}
+
+// Parses an aliased table name  
+String TableAliasName() :
+{ Token name; }
+{
+  ( name = <QUOTED_VARIABLE> | name = SQLIdentifier() )
+
+  { return Util.asNonQuotedRef(name); }
+}
+
+
+
+// Parses an SQL identifier
+Token SQLIdentifier() :
+{ Token name; }
+{
+  (  name = <IDENTIFIER> 
+  )
+  
+  { return name; }
+}
+
+// Parses an SQL type and forms a TType object.  For example, "CHAR(500)" is
+// parsed to a TStringType with a maximum size of 500 and lexicographical
+// collation.
+TType GetTType() :
+{ Token t;
+  int data_type;
+  int size = -1;
+  int scale = -1;
+  Token class_tok = null;
+  int strength = -1;
+  int decomposition = -1;
+  String loc = null;
+}
+{
+  (   LOOKAHEAD(GetStringSQLType())
+      data_type = GetStringSQLType() [ "(" size = PositiveIntegerConstant() ")" ]
+      [ <COLLATE> t=<STRING_LITERAL> { loc = ((TObject) Util.toParamObject(t, case_insensitive_identifiers)).toString(); }
+         [ strength=GetCollateStrength() ] [ decomposition = GetCollateDecomposition() ] ]
+      { return TType.stringType(data_type, size, loc, strength, decomposition); }
+
+    | data_type = GetNumericSQLType() [ "(" size = PositiveIntegerConstant()
+                             [ "," scale = PositiveIntegerConstant() ] ")" ]
+      { return TType.numericType(data_type, size, scale); } 
+      
+    | data_type = GetBooleanSQLType()
+      { return TType.booleanType(data_type); }
+
+    | data_type = GetDateSQLType() 
+      { return TType.dateType(data_type); }
+
+    | data_type = GetBinarySQLType() [ "(" size = PositiveIntegerConstant() ")" ]
+      { return TType.binaryType(data_type, size); }
+
+  )
+}
+
+int GetStringSQLType() :
+{ }
+{
+    LOOKAHEAD(2) ( <CHARACTER> <VARYING> ) { return SQLTypes.VARCHAR; }
+  | LOOKAHEAD(3) ( <LONG> <CHARACTER> <VARYING> ) { return SQLTypes.LONGVARCHAR; }
+  | <LONGVARCHAR> { return SQLTypes.LONGVARCHAR; }
+  | ( <CHAR> | <CHARACTER> ) { return SQLTypes.CHAR; }
+  | <VARCHAR> { return SQLTypes.VARCHAR; }
+  | <CLOB> { return SQLTypes.CLOB; }
+}
+
+int GetNumericSQLType() :
+{ }
+{
+    ( <INT> | <INTEGER> ) { return SQLTypes.INTEGER; }
+  | <TINYINT> { return SQLTypes.TINYINT; }
+  | <SMALLINT> { return SQLTypes.SMALLINT; }
+  | <BIGINT> { return SQLTypes.BIGINT; }
+  | <FLOAT> { return SQLTypes.FLOAT; }
+  | <REAL> { return SQLTypes.REAL; }
+  | <DOUBLE> { return SQLTypes.DOUBLE; }
+  | <NUMERIC> { return SQLTypes.NUMERIC; }
+  | <DECIMAL> { return SQLTypes.DECIMAL; }
+}
+
+int GetBooleanSQLType() :
+{ }
+{
+  ( <BOOLEAN> | <BIT> ) { return SQLTypes.BOOLEAN; }
+}
+
+int GetDateSQLType() :
+{ }
+{
+    <TIMESTAMP> [ "(" PositiveIntegerConstant() ")" ] [LOOKAHEAD(2) <WITH> <TIME> <ZONE> ] { return SQLTypes.TIMESTAMP; }
+  | <TIME> [ "(" PositiveIntegerConstant() ")" ] [LOOKAHEAD(2) <WITH> <TIME> <ZONE> ]{ return SQLTypes.TIME; }
+  | <DATE> { return SQLTypes.DATE; }
+  | ( <INTERVAL> ( <YEAR> | <MONTH> | <DAY> ) 
+  	  [ "(" PositiveIntegerConstant() ")" ] 
+  	  [ <TO> ]
+  	  [ <YEAR> | <MONTH> | <DAY> ]
+  	  { return SQLTypes.INTERVAL; } 
+  	)
+}
+
+int GetBinarySQLType() :
+{ }
+{
+    LOOKAHEAD(2) ( <BINARY> <VARYING> ) { return SQLTypes.VARBINARY; }
+  | LOOKAHEAD(3) ( <LONG> <BINARY> <VARYING> ) { return SQLTypes.LONGVARBINARY; }
+  | <LONGVARBINARY> { return SQLTypes.LONGVARBINARY; }
+  | <VARBINARY> { return SQLTypes.VARBINARY; }
+  | <BINARY> { return SQLTypes.BINARY; }
+  | <BLOB> { return SQLTypes.BLOB; }
+}
+
+int GetCollateStrength() :
+{ 
+}
+{ (   <PRIMARY_STRENGTH>    { return java.text.Collator.PRIMARY; }
+    | <SECONDARY_STRENGTH>  { return java.text.Collator.SECONDARY; }
+    | <TERTIARY_STRENGTH>   { return java.text.Collator.TERTIARY; }
+    | <IDENTICAL_STRENGTH>  { return java.text.Collator.IDENTICAL; }
+  )
+}
+
+int GetCollateDecomposition() :
+{ }
+{ (   <NO_DECOMPOSITION>        { return java.text.Collator.NO_DECOMPOSITION; }
+    | <CANONICAL_DECOMPOSITION> { return java.text.Collator.CANONICAL_DECOMPOSITION; }
+    | <FULL_DECOMPOSITION>      { return java.text.Collator.FULL_DECOMPOSITION; }
+  )
+}
+
+// All statements that start with <CREATE>
+StatementTree Create() :
+{ StatementTree ob;
+}
+{
+  (  ( <CREATE> | <REPLACE> )
+    (   ob=CreateTable()
+      //| ob=CreateTrigger()
+      //| ob=CreateFunction()
+      | ob=CreateIndex()
+      | ob=CreateDatabase()
+      //| ob=CreateSequence()
+      //| ob=CreateUser()
+      | ob=CreateView()
+    )
+  )
+  
+  { return ob; }
+}  
+
+StatementTree CreateTable() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.CreateTable");
+  boolean temporary = false;
+  boolean multiset = false;
+  boolean ifVolatile = false;
+  String table_name;
+  String sourceTable = null; 
+  Token t,d;
+  ArrayList column_list = new ArrayList();
+  ArrayList constraint_list = new ArrayList();
+  Expression check_expression;
+  ArrayList index_list = new ArrayList();
+  StatementTree select = null;
+}
+{
+  (  
+  	  [ LOOKAHEAD(2) (<SET> | <MULTISET>) { multiset = true; } ]
+  	  [<GLOBAL> <TEMPORARY> { temporary = true; } | <VOLATILE> { ifVolatile = true; } ] 
+  	  [LOOKAHEAD(2) (<SET> | <MULTISET>){ multiset = true; } ]
+     <TABLE> table_name = TableName()
+     [ tableOptions() ]
+     [ LOOKAHEAD(2) ColumnDeclarationList(column_list, constraint_list) ]
+     [ <CHECK> check_expression = DoExpression()
+            { ConstraintDef check_constraint = new ConstraintDef();
+              check_constraint.setCheck(check_expression);
+              constraint_list.add(check_constraint); }
+     ]		 
+//     [ CreateOptions(statement) ]
+		[ LOOKAHEAD(2) <AS> ( ( <LPAR> select = Select() <RPAR> ) | sourceTable = TableName() )<WITH> [ <NO> ] <DATA> ]
+		[ tableIndexList(index_list) ]
+		[ <ON> <COMMIT> <PRESERVE> <ROWS>]
+  )
+  
+  { cmd.putBoolean("temporary", temporary);
+    cmd.putBoolean("multiset", multiset);
+    cmd.putBoolean("volatile", ifVolatile);
+    //cmd.putObject("database_name", database_name);
+    cmd.putObject("table_name", table_name);
+    cmd.putObject("column_list", column_list);
+    cmd.putObject("constraint_list", constraint_list);
+    cmd.putObject("index_list",index_list);
+    cmd.putObject("as_clause",select);
+    cmd.putObject("as_table",sourceTable);
+    return cmd; }
+  
+}
+
+void tableOptions(): /* opt_options */
+{}
+{
+	<COMA> tableOptionsList()
+}
+
+void tableOptionsList(): /* table_options_list */
+{}
+{
+	 tableOption()( <COMA> tableOption())*	
+}
+
+void tableOption():
+{	
+}
+{
+	LOOKAHEAD(2) (opt_no() < FALLBACK >) 
+	|LOOKAHEAD(2)(opt_no() < LOG >)
+	|LOOKAHEAD(2)(opt_no() opt_beforeorafter() < JOURNAL >)	
+	|LOOKAHEAD(2)(opt_no() < FALLBACK > < PROTECTION >)		
+	| < CHECKSUM > comparisonOperator() [ opt_checkval() ]
+	| < FREESPACE > comparisonOperator() <NUMBER_LITERAL> (opt_percent())?
+	| opt_mum() < DATABLOCKSIZE >
+	| < DATABLOCKSIZE > comparisonOperator() <NUMBER_LITERAL> (opt_byte())?
+	
+}
+
+void opt_no(): /* opt_no */
+{}
+{
+	(<NO> | <DUAL> | <LOCAL> | <NOT> <LOCAL>)?
+}
+
+void opt_beforeorafter(): /* opt_beforeorafter */
+{}
+{
+	(<BEFORE> | <AFTER>)?
+}
+
+void opt_checkval(): /* opt_checkval */
+{}
+{
+	<SQLDEFAULT> | <HIGH> | <LOW> | <MEDIUM> | <NONE>
+}
+
+void opt_percent(): /* opt_percent */
+{}
+{
+	<PERCENT>
+}
+
+void opt_mum(): /* opt_mum */
+{}
+{
+	<MINIMUM> | <MAXIMUM>
+}
+
+void opt_byte(): /* opt_byte */
+{}
+{
+	<BYTE>|<KBYTE>|<KILOBYTE>| <BYTES>|<KBYTES>|<KILOBYTES>
+}
+
+void comparisonOperator() :
+{}
+{
+	(  <EQUALS>        
+		|  <GR>     
+		|  <GREQ> 
+		|  <LE>         
+		|  <LEEQ>   
+		|  <NOTEQ>     
+	)
+}
+
+// Parses table index definition
+void tableIndexList(ArrayList index_list)	:
+{}
+{		
+			tableIndex(index_list)
+      ( [ <COMA> ] tableIndex(index_list) )*  
+}
+
+void tableIndex(ArrayList index_list)	:
+{
+	IndexDef indexdef = null;
+}
+{
+	indexdef = IndexDefinition() { index_list.add(indexdef); }
+}
+
+IndexDef IndexDefinition()	:
+{
+	IndexDef index = new IndexDef(); 
+  String index_type;
+  Expression default_exp;
+  Token name;
+  ArrayList col_list = new ArrayList();
+}
+{
+	(
+		( <PRIMARY> <INDEX> { index.index_type = "PRIMARY INDEX" ; }
+			| LOOKAHEAD(2)(<UNIQUE> <PRIMARY> <INDEX> { index.index_type = "UNIQUE PRIMARY INDEX" ; })
+			| <INDEX> { index.index_type = "INDEX" ; }
+			| <UNIQUE> <INDEX> { index.index_type = "UNIQUE INDEX" ; } 
+		)
+		[ name = <IDENTIFIER> { index.index_name = name.image ; } ]
+		[ <ALL> ]
+		<LPAR>
+		BasicColumnList(col_list) { index.setColumnList(col_list); }
+		<RPAR>
+		[ <PARTITION> <BY> default_exp = DoExpression() { index.setPartition(default_exp); } ]
+		[ <ORDER> <BY> ( <VALUES>|<HASH> )? <IDENTIFIER>]
+	)
+	{ return index; }
+}
+
+
+// Parses a list of column declarations.  eg. ' id NUMERIC(5, 20), number VARCHAR(90), ... '
+// and also any constraints.
+void ColumnDeclarationList(ArrayList column_list, ArrayList constraint_list) :
+{
+}
+{
+  "(" ColumnOrConstraintDefinition(column_list, constraint_list)
+      ( "," ColumnOrConstraintDefinition(column_list, constraint_list) )*
+  ")"
+}
+
+void ColumnOrConstraintDefinition(ArrayList column_list, ArrayList constraint_list) :
+{ ColumnDef coldef = null;
+  ConstraintDef condef = null;
+}
+{
+  (   coldef = ColumnDefinition()           { column_list.add(coldef); }
+    | condef = TableConstraintDefinition()  { constraint_list.add(condef); }
+  )
+}
+
+ColumnDef ColumnDefinition() :
+{ ColumnDef column = new ColumnDef();
+  Token t;
+  Token col_constraint; 
+  String col_name;
+}
+{
+  ( col_name = ColumnName() { column.setName(col_name); }
+    [ LOOKAHEAD(2) ColumnDataType(column) ]    
+    ( ColumnConstraint(column) )*   
+  )
+  
+  { return column; }
+}
+
+// Constraint on a column, eg. 'NOT NULL', 'NULL', 'PRIMARY KEY', 'UNIQUE', etc.
+void ColumnConstraint(ColumnDef column) :
+{ 
+  ArrayList col_list = new ArrayList();
+  ArrayList column_list = new ArrayList();
+  Expression default_exp;
+}
+{   
+    ( <CONSTRAINT>  ConstraintName() 
+    	| LOOKAHEAD(2)<NOT> <NULL_LITERAL>  { column.addConstraint("NOT NULL"); }
+      | <NULL_LITERAL> { column.addConstraint("NULL"); }
+      | <PRIMARY> <KEY> { column.addConstraint("PRIMARY"); }
+      | <UNIQUE> { column.addConstraint("UNIQUE"); }
+      | <CHECK> "(" DoExpression() ")"      
+      | <FOREIGN> <KEY> "(" BasicColumnList(column_list) ")"
+      | <REFERENCES> [ <WITH> (<NO>)? <CHECK> <OPTION>]  
+        TableName() [ "(" BasicColumnList(col_list) ")" ]
+      | <FORMAT> <STRING_LITERAL>
+      | <TITLE> <STRING_LITERAL>   
+      | <UPPERCASE>|LOOKAHEAD(2)[<NOT>]<CASESPECIFIC>
+      | <CHARACTER> <SET> <CHARACTER_SET> 
+      | <COMPRESS> [ LOOKAHEAD(2) DoExpression() ]
+      | <SQLDEFAULT> default_exp = DoExpression()  { column.setDefaultExpression(default_exp); }
+      | <WITH> <SQLDEFAULT>
+      | <GENERATED> <BY> <SQLDEFAULT> <AS> <IDENTITY> "(" <START> <WITH> <NUMBER_LITERAL> <INCREMENT> <BY>  <NUMBER_LITERAL> ( <MAXVALUE> | <MINVALUE> )  <NUMBER_LITERAL> [ <NO> <CYCLE> ] ")"
+    )    
+}
+
+
+// Data type of a ColumnDef (eg. "varchar(50)", etc)
+void ColumnDataType(ColumnDef column) :
+{ TType type;
+}
+{
+  type = GetTType() { column.setDataType(type); }
+}
+
+/*  Table-Level Named Constraints  */
+ConstraintDef TableConstraintDefinition() :
+{ ConstraintDef constraint = new ConstraintDef();
+  ArrayList column_list = new ArrayList();
+  ArrayList column_list2 = new ArrayList();
+  String constraint_name;
+  //String update_rule = "NO ACTION";
+  //String delete_rule = "NO ACTION";
+  Expression expression;  
+  String reference_table;
+}
+{
+  ( [ <CONSTRAINT> constraint_name = ConstraintName() { constraint.setName(constraint_name); }  ]
+
+    (   <PRIMARY> <KEY> "(" BasicColumnList(column_list) ")" { constraint.setPrimaryKey(column_list); }
+      | <UNIQUE> "(" BasicColumnList(column_list) ")"      { constraint.setUnique(column_list); }
+      | <CHECK> "(" expression = DoExpression() ")"        { constraint.setCheck(expression); }
+      | <FOREIGN> <KEY> "(" BasicColumnList(column_list) ")"
+        <REFERENCES> [ <WITH> (<NO>)? <CHECK> <OPTION>] 
+        reference_table=TableName() [ "(" BasicColumnList(column_list2) ")" ]        
+        { constraint.setForeignKey(reference_table, column_list, column_list2); }
+    )   
+   
+  )
+  
+  { return constraint; }
+
+}
+
+StatementTree Insert() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.Insert");
+  String table_name;
+  ArrayList col_list = new ArrayList();
+  ArrayList data_list = new ArrayList(); // ( Array of Expression[] )
+  StatementTree select = null;
+  ArrayList assignments = new ArrayList();
+  String type;
+}
+{
+
+  ( <INSERT> [ <INTO> ] table_name = TableName()
+       [ "(" BasicColumnList(col_list) ")" ]
+        (     (<VALUES> InsertDataList(data_list)  { type = "from_values"; })
+            | (select = Select()                   { type = "from_select"; })
+        )      
+  )
+
+  { cmd.putObject("table_name", table_name);
+    cmd.putObject("col_list", col_list);
+    cmd.putObject("data_list", data_list);
+    cmd.putObject("select", select);
+    cmd.putObject("assignments", assignments);
+    cmd.putObject("type", type);
+    return cmd; }
+
+}
+
+// The list of columns to insert formatted as; eg.  (9, 4), (3, 2), (9, 9), ....
+void InsertDataList(ArrayList data_list) :
+{ ArrayList insert_vals;
+}
+{
+
+    "(" insert_vals = InsertExpressionList() ")" { data_list.add(insert_vals); }
+  ( "," "(" insert_vals = InsertExpressionList() ")" { data_list.add(insert_vals); } )*
+
+}
+
+ArrayList InsertExpressionList() :
+{ ArrayList list = new ArrayList();
+  Object elem;
+}
+{
+  [ elem = InsertElement() { list.add(elem); }
+    ( "," elem = InsertElement() { list.add(elem); }  )*
+  ]
+
+  { return list; }
+}  
+
+Object InsertElement() :
+{ Expression e;
+}
+{
+  (   <SQLDEFAULT>        { return "DEFAULT"; }
+    | e = DoExpression()  { return e; } 
+  )
+}
+
+StatementTree CreateView() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.ViewManager");
+  String view_name;
+  TableSelectExpression select_cmd = new TableSelectExpression();;
+  ArrayList col_list = new ArrayList();
+  ArrayList order_by = new ArrayList();    
+ 
+}
+{
+  (   <VIEW> view_name = TableName() [ "(" BasicColumnList(col_list) ")" ]
+  		<AS> 
+  		( <LOCK> [( <DATABASE>| <TABLE>| <VIEW>| <ROW> ) ] [ <IDENTIFIER>| <DOT_DELIMINATED_REF> ] [ ( <FOR>| <IN> ) ] ( <ACCESS>| <EXCLUSIVE>| <SHARE>| <READ>| <WRITE> ) [ <MODE> ] [ <NOWAIT> ] )*
+      ["("]
+      select_cmd = GetTableSelectExpression()  
+      [ <SAMPLE> <NUMBER_LITERAL> ]
+      [")"]  
+      [ <WITH> (<NO>)? <CHECK> <OPTION>] 
+      [ <ORDER> <BY> SelectOrderByList(order_by) ]
+    
+	)
+  { cmd.putObject("type", "create");
+    cmd.putObject("view_name", view_name);
+    cmd.putObject("column_list", col_list);
+    cmd.putObject("select_expression", select_cmd);
+    return cmd; }
+}
+
+ArrayList tableList() :
+{ String table_name;
+  String correlation_name = null; 
+  HashMap tableInfo = new HashMap();
+  ArrayList list = new ArrayList();
+}
+{
+	table_name = TableName() { tableInfo.put("table_name", table_name); tableInfo.put("correlation_name", ""); }
+    [ [ <AS> ]  correlation_name = TableName() { tableInfo.put("correlation_name", "");} ]  
+    { list.add(tableInfo); }
+	
+    ( <COMA> table_name = TableName() { tableInfo.put("table_name", table_name); tableInfo.put("correlation_name", ""); }
+    [ [ <AS> ]  correlation_name = TableName() { tableInfo.put("correlation_name", "");} ]  
+    { list.add(tableInfo); })*  
+    
+  
+  { return list; }
+}
+
+
+StatementTree Delete() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.Delete");
+  String table_name;
+  String correlation_name = null;  
+  SearchExpression where_clause = new SearchExpression();
+  int limit = -1;
+  ArrayList tableList = new ArrayList();
+}
+{
+
+  ( <DELETE> [ ColumnName() ]
+  	<FROM> tableList = tableList()
+  	//[ [ <AS> ] correlation_name = TableName() ]
+    [ ( <WHERE> ConditionsExpression(where_clause) ) | ( <ALL> { where_clause.setFromExpression(new Expression(TObject.stringVal("ALL"))); } ) ]       
+  )
+
+  { cmd.putObject("tableList", tableList);
+  	//cmd.putObject("correlation_name", correlation_name);
+    cmd.putObject("where_clause", where_clause);   
+    return cmd; }
+}
+
+// All statements that start with <DROP>
+StatementTree Drop() :
+{ 
+	StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.Drop");  
+  String drop_obj_name;  
+  String drop_obj_type;
+}
+{
+  (  <DROP> [ <TEMPORARY> ]
+  	 ( <TABLE> { drop_obj_type = "table"; }
+       |  <MACRO> { drop_obj_type = "macro"; }
+       |  <VIEW> { drop_obj_type = "view"; }
+       |  <TRIGGER> { drop_obj_type = "trigger"; }
+       |  <PROCEDURE> { drop_obj_type = "procedure"; }
+     )
+      drop_obj_name = TableName()
+      [ <ALL> ]         
+  )
+  
+  { 
+    cmd.putObject("drop_obj_name", drop_obj_name);
+    cmd.putObject("drop_obj_type", drop_obj_type);
+    return cmd; }  
+}
+
+StatementTree CreateDatabase() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.Database");
+  cmd.putObject("type", "create");
+  String database_name;
+}
+{
+  (   <DATABASE> database_name = DatabaseName() )
+  
+  { cmd.putObject("database_name", database_name);
+    return cmd; }
+}
+
+// Name of a database
+String DatabaseName() :
+{ Token name; }
+{
+  ( name = <QUOTED_VARIABLE> | name = SQLIdentifier() )
+  
+  { return Util.asNonQuotedRef(name); }
+}
+
+StatementTree Update() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.UpdateTable");
+  String table_name;
+  //ArrayList assignments = new ArrayList();
+  SearchExpression where_clause = new SearchExpression();
+  int limit = -1;
+  ArrayList col_list = new ArrayList();
+  ArrayList data_list = new ArrayList();
+  FromClause from_clause = new FromClause();
+}
+{
+  ( 
+  	<UPDATE> table_name = TableName() 
+  	[ TableAliasName() ]
+  	[ <FROM> SelectTableList(from_clause) ]
+  	<SET> AssignmentList()
+    [ <WHERE> ConditionsExpression(where_clause) ]
+    [ <ELSE> <INSERT> [ <INTO> ] TableName()  [LOOKAHEAD(2) "(" BasicColumnList(col_list) ")" ]  [ <VALUES> ]  InsertDataList(data_list) ]
+        
+  )
+
+  { cmd.putObject("table_name", table_name);
+   //cmd.putObject("assignments", assignments);
+    cmd.putObject("where_clause", where_clause);    
+    return cmd; }
+}
+
+void AssignmentList() :
+{ String column;
+  //Expression exp;
+}
+{
+  ( column=ColumnName() <EQUALS>  DoExpression()
+   
+    [ "," AssignmentList() ]   
+  )
+}
+
+StatementTree Alter() :
+{ StatementTree cmd;
+}
+{
+  (   <ALTER>
+    (   cmd=AlterTable()
+      //| cmd=AlterUser()
+    )
+  )
+  
+  { return cmd; }
+}
+
+/*
+StatementTree AlterTable() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.AlterTable");
+  String table_name;
+  AlterTableAction action;
+  StatementTree create_statement;
+}
+{
+  (   <TABLE> table_name=TableName() action=GetAlterTableAction()
+      { cmd.putObject("table_name", table_name);
+        cmd.putObject("alter_action", action);
+      }
+
+    //| <CREATE> create_statement = CreateTable()
+    //  { cmd.putObject("create_statement", create_statement); }
+        
+  )
+
+  { return cmd; }
+}
+
+AlterTableAction GetAlterTableAction() :
+{ String col_name, con_name, col_name_old;
+  ColumnDef column_def;
+  ConstraintDef constraint_def;
+  Expression default_exp;
+  AlterTableAction action = new AlterTableAction();
+}
+{
+  (   <SQLADD>
+      (   [ <SQLCOLUMN> ] column_def=ColumnDefinition()
+          { action.setAction("ADD");
+            action.addElement(column_def);
+          }
+        | constraint_def=TableConstraintDefinition()
+          { action.setAction("ADD_CONSTRAINT");
+            action.addElement(constraint_def);
+          }
+      )
+    //| <ALTER> [ <SQLCOLUMN> ] col_name=ColumnName()
+    //  (   <SET> default_exp=DoExpression()
+    //      { action.setAction("ALTERSET");
+    //        action.addElement(col_name);
+    //        action.addElement(default_exp);
+    //      }
+    //    | <DROP> <DEFAULT>
+    //      { action.setAction("DROPDEFAULT");
+    //        action.addElement(col_name);
+    //      }
+    //  )
+    | <DROP>
+      (   [ <SQLCOLUMN> ] col_name=ColumnName()
+          { action.setAction("DROP");
+            action.addElement(col_name);
+          }
+        //| <CONSTRAINT> con_name=ConstraintName()
+        //  { action.setAction("DROP_CONSTRAINT");
+        //    action.addElement(con_name);
+        //  }
+        //| <PRIMARY> <KEY>
+        //  { action.setAction("DROP_CONSTRAINT_PRIMARY_KEY");
+        //  }
+      )
+    | <RENAME> 
+       (	[ <SQLCOLUMN> ] col_name_old=ColumnName() [<AS>] <TO> col_name=ColumnName()
+       		{
+       			action.setAction("RENAME");
+            	action.addElement(col_name_old);
+            	action.addElement(col_name);
+       		}
+       )
+  )
+  
+  { return action; }
+}
+
+*/
+
+StatementTree AlterTable() :
+{ StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.AlterTable");
+  String table_name;
+  ArrayList actions = new ArrayList(); 
+  StatementTree create_statement;
+}
+{
+  (   <TABLE> table_name=TableName() actions=GetAlterTableActions()
+      { cmd.putObject("table_name", table_name);
+        cmd.putObject("alter_actions", actions);
+      }
+
+    //| <CREATE> create_statement = CreateTable()
+    //  { cmd.putObject("create_statement", create_statement); }
+        
+  )
+
+  { return cmd; }
+}
+
+ArrayList GetAlterTableActions() :
+{ String col_name, con_name, col_name_old;
+  ColumnDef column_def;
+  ConstraintDef constraint_def;
+  Expression default_exp;
+  AlterTableAction action = new AlterTableAction();
+  ArrayList actions = new ArrayList(); 
+}
+{
+  (   <SQLADD>
+      (   [ <SQLCOLUMN> ] column_def=ColumnDefinition()
+          { action.setAction("ADD");
+            action.addElement(column_def);
+          }
+        | constraint_def=TableConstraintDefinition()
+          { action.setAction("ADD_CONSTRAINT");
+            action.addElement(constraint_def);
+          }
+      )    
+    | <DROP>
+      (   [ <SQLCOLUMN> ] col_name=ColumnName()
+          { action.setAction("DROP");
+            action.addElement(col_name);
+          }      
+      )
+    | <RENAME> 
+       (	[ <SQLCOLUMN> ] col_name_old=ColumnName() [<AS>] <TO> col_name=ColumnName()
+       		{
+       			action.setAction("RENAME");
+            	action.addElement(col_name_old);
+            	action.addElement(col_name);
+       		}
+       )
+  )
+  {
+  	actions.add(action);
+  }
+  (  ","  
+  	{
+  		action = new AlterTableAction();
+  	}
+  	(<SQLADD>
+      (   [ <SQLCOLUMN> ] column_def=ColumnDefinition()
+          { action.setAction("ADD");
+            action.addElement(column_def);
+          }
+        | constraint_def=TableConstraintDefinition()
+          { action.setAction("ADD_CONSTRAINT");
+            action.addElement(constraint_def);
+          }
+      )    
+    | <DROP>
+      (   [ <SQLCOLUMN> ] col_name=ColumnName()
+          { action.setAction("DROP");
+            action.addElement(col_name);
+          }      
+      )
+    | <RENAME> 
+       (	[ <SQLCOLUMN> ] col_name_old=ColumnName() [<AS>] <TO> col_name=ColumnName()
+       		{
+       			action.setAction("RENAME");
+            	action.addElement(col_name_old);
+            	action.addElement(col_name);
+       		}
+       ))
+       {       		
+       		actions.add(action);
+       }
+  )*
+  
+  { return actions; }
+}
+
+
+StatementTree CreateIndex():
+{
+  StatementTree cmd = new StatementTree("com.teradata.sqlparser.interpret.NoOp");
+}
+{
+  (   [<UNIQUE>] <INDEX> [ IndexName() ] [ "(" BasicColumnList(new ArrayList()) ")" ] <ON>
+        TableName() [ "(" BasicColumnList(new ArrayList()) ")" ] )
+  
+  { return cmd; }
+}
+
+String IndexName() :
+{ Token name;
+}
+{
+  ( name = <QUOTED_VARIABLE> | name = SQLIdentifier() )
+
+  { return Util.asNonQuotedRef(name); }
+}
