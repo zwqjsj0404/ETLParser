@@ -33,7 +33,7 @@
 		<dependency>
 			<groupId>com.teradata</groupId>
 			<artifactId>terajdbc4</artifactId>
-			<version>13.10.0.1</version>
+			<version>13.10.0.10</version>
 		</dependency>
 
 		<dependency>
@@ -64,7 +64,7 @@
 		<dependency>
 			<groupId>log4j</groupId>
 			<artifactId>log4j</artifactId>
-			<version>1.2.9</version>
+			<version>1.2.14</version>
 		</dependency>
 
 		<!-- 单元测试 
@@ -105,8 +105,8 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>2.3.2</version>
 				<configuration>
-					<source>1.4</source>
-					<target>1.4</target>
+					<source>1.5</source>
+					<target>1.5</target>
 					<encoding>utf8</encoding>
 				</configuration>
 			</plugin>
@@ -124,36 +124,53 @@
 					</archive>
 				</configuration>
 			</plugin>
-			
-			<!-- 代码混淆plugin -->
-			<!-- plugin>
-				<groupId>com.pyx4me</groupId>
-				<artifactId>proguard-maven-plugin</artifactId>
-				<executions>
-					<execution>
-						<phase>package</phase>
-						<goals>
-							<goal>proguard</goal>
-						</goals>
-					</execution>
-				</executions>
-				<configuration>
-					<options>
-						<option>-dontoptimize</option>
-						<option>-keep public class *</option>
-						<option> -keepattributes Exceptions, InnerClasses, Signature,
-							Deprecated, *Annotation*, EnclosingMethod </option>
-						<option>
-							-keepclassmembers class *{!private &lt;fields&gt;;!private
-							&lt;methods&gt;;} </option>
-					</options>
-					<libs>
-						<lib>${java.home}/lib/rt.jar</lib>
-					</libs>
-				</configuration>
-			</plugin-->
-			
+
+      <!-- 打包可执行jar的配置 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifest>
+              <addClasspath>true</addClasspath>
+              <mainClass>com.teradata.mds.etlparser.RelaParser</mainClass>
+              <classpathPrefix>jars</classpathPrefix>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>copy-dependencies</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/jars</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!--<plugin>-->
+        <!--<groupId>org.codehaus.mojo</groupId>-->
+        <!--<artifactId>javacc-maven-plugin</artifactId>-->
+        <!--<version>2.5</version>-->
+        <!--<executions>-->
+          <!--<execution>-->
+            <!--<id>javacc</id>-->
+            <!--<goals>-->
+              <!--<goal>javacc</goal>-->
+            <!--</goals>-->
+          <!--</execution>-->
+        <!--</executions>-->
+      <!--</plugin>-->
+
 		</plugins>
 	</build>
-	
 </project>
