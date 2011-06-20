@@ -423,13 +423,14 @@ public class FileUtil {
 		}
 		m.appendTail(sb);
 
-		p = Pattern.compile("TITLE '(.*?)'", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-		m = p.matcher(new String(sb));
-		sb = new StringBuffer();
-		while (m.find()) {
-			m.appendReplacement(sb, " ");
-		}
-		m.appendTail(sb);
+    //DELETE by MarkDong AT 2011-06-20
+//		p = Pattern.compile("TITLE '(.*?)'", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+//		m = p.matcher(new String(sb));
+//		sb = new StringBuffer();
+//		while (m.find()) {
+//			m.appendReplacement(sb, " ");
+//		}
+//		m.appendTail(sb);
 		return sb;
 	}
 
