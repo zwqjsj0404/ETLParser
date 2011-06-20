@@ -200,7 +200,7 @@ public class SqlParser {
 	/**
 	 * get script id by script name: Script_Name
 	 * 
-	 * @param Script_Name
+	 * @param scriptName
 	 * @return
 	 * @throws MDSException
 	 */
@@ -312,7 +312,7 @@ public class SqlParser {
 	/**
 	 * parse a delete statement and return void(We don't care about deleting statement);
 	 * 
-	 * @param STree
+	 * @param sTree
 	 *            the statement to be parsed.
 	 * 
 	 *            We can get the entire tree info from its map(Type: HashMap). Because this is a "delete" statement, it
@@ -329,7 +329,7 @@ public class SqlParser {
 	/**
 	 * parse a update statement and return void(We don't care about updating statement);
 	 * 
-	 * @param STree
+	 * @param sTree
 	 *            the statement to be parsed.
 	 * 
 	 *            We can get the entire tree info from its map(Type: HashMap). Because this is a "update table"
@@ -352,7 +352,7 @@ public class SqlParser {
 	 * String "alter_action" alter action on the table. Here, wu focus on the following actions: "ADD", "DROP", "RENAME"
 	 * Type: AlterTableAction
 	 * 
-	 * @param STree
+	 * @param sTree
 	 *            the statement to be parsed.
 	 * @return
 	 * @throws MDSException
@@ -449,7 +449,7 @@ public class SqlParser {
 	/**
 	 * parse a select statement and return void(We don't care about selecting statement);
 	 * 
-	 * @param STree
+	 * @param sTree
 	 *            the statement to be parsed.
 	 * 
 	 *            We can get the entire tree info from its map(Type: HashMap). Because this is a "Select" statement, it
@@ -467,7 +467,7 @@ public class SqlParser {
 	 * parse a create table statement and return table info("table_name",
 	 * "volatile","as_table","as_clause","columnNameList");
 	 * 
-	 * @param STree
+	 * @param sTree
 	 *            the statement to be parsed.
 	 * 
 	 *            We can get the entire tree info from its map(Type: HashMap). Because this is a "create table"
@@ -569,7 +569,7 @@ public class SqlParser {
 	 * parse create table statement; if create table has as clause, must store the source info into
 	 * volatileTableSourceList or commonTableSourceList
 	 * 
-	 * @param STree
+	 * @param sTree
 	 *            the statement to be parsed.
 	 * @return
 	 * @throws MDSException
@@ -784,7 +784,7 @@ public class SqlParser {
 	/**
 	 * parse insert statement;
 	 * 
-	 * @param STree
+	 * @param sTree
 	 *            the statement to be parsed.
 	 * 
 	 *            We can get the entire tree info from its map(Type: HashMap). Because this is a "Insert" statement, it
@@ -843,8 +843,7 @@ public class SqlParser {
 
 			
 			// get all related columns
-			List columns = new ArrayList();
-			columns = selExp.columns;
+			List columns = selExp.columns;
 			List tempColList = new ArrayList();
 			// if having * in select clause, replace it with column names implied
 			for (int i = 0; i < columns.size(); i++) {
@@ -1627,8 +1626,9 @@ public class SqlParser {
 			} else if(oper.is("=")) {
 				conditions.addAll(getConditionFromEquals(exp));
 			} else if(oper.is("= ANY")) {
+        //TODO 后续要做什么处理？
 				Expression[] subExps = exp.split();
-				System.out.println(subExps);
+				//System.out.println(subExps);
 			}
 		} 
 		
@@ -1752,7 +1752,7 @@ public class SqlParser {
 	/**
 	 * parse Create view statement;
 	 * 
-	 * @param STree
+	 * @param sTree
 	 *            the statement to be parsed.
 	 * 
 	 *            We can get the entire tree info from its map(Type: HashMap). Because this is a "create view"
@@ -2097,8 +2097,7 @@ public class SqlParser {
 	public List getTableAliasInFrom(TableSelectExpression selExp) {
 		FromClause fromclause = new FromClause();
 		fromclause = selExp.from_clause;
-		List def_list = new ArrayList();
-		def_list = fromclause.def_list;
+		List def_list = fromclause.def_list;
 		List tableAliasInFrom = new ArrayList();
 		for (int i = 0; i < def_list.size(); i++) {
 			FromTableDef table_def = (FromTableDef) def_list.get(i);
@@ -2801,9 +2800,6 @@ public class SqlParser {
 	 */
 	private List getDirectSourceColumnList(String qualifyName, String columnExpStr, TableSelectExpression select) 
 		throws MDSException {
-		if(qualifyName.equalsIgnoreCase("A3.AGT_AMT_077")) {
-			System.out.println(qualifyName);
-		}
 		List sourceColumnList = new ArrayList();
 		HashMap sourceColumn = new HashMap();
 		String temp[] = null;
