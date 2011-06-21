@@ -111,20 +111,6 @@
 				</configuration>
 			</plugin>
 
-			<plugin>
-				<artifactId>maven-assembly-plugin</artifactId>
-				<configuration>
-					<descriptorRefs>
-						<descriptorRef>jar-with-dependencies</descriptorRef>
-					</descriptorRefs>
-					<archive>
-						<manifest>
-							<mainClass>com.teradata.mds.etlparser.RelaParser</mainClass>
-						</manifest>
-					</archive>
-				</configuration>
-			</plugin>
-
       <!-- 打包可执行jar的配置 -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -160,7 +146,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>javacc-maven-plugin</artifactId>
-        <version>2.5</version>
+        <version>2.6</version>
         <executions>
           <execution>
             <id>javacc</id>
