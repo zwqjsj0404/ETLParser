@@ -3615,11 +3615,7 @@ public class SqlParser {
 					parseDelete(statement);
 				}
 				if (statement.getClassName().equals("com.teradata.sqlparser.interpret.Insert")) {
-					// long parseStartTime = System.currentTimeMillis();
-					// logger.info("-------sql:"+sql);
 					sourceColumns = parseInsert(statement);
-					// long parseEndTime = System.currentTimeMillis();
-					// logger.info("-------parser time=>"+(parseEndTime - parseStartTime));
 					if (sourceColumns == null && blankComment) {
 						return null;
 					}

@@ -91,29 +91,34 @@ public class SQLExtractUtil {
 			BufferedReader br = new BufferedReader(strReader);
 			String line = br.readLine();
 			while (line != null) {
-				// 处理Tab符和注释行
+				// 处理Tab符和注释行
+
 				line = ignoreComment_Tab(line, br);
 				if (line != null)
 					line = replaceIllegalLexical(line);
 				if (line == null)
 					break;
-				if (line.toUpperCase().startsWith(SELECT)// SQL语句开始
+				if (line.toUpperCase().startsWith(SELECT)// SQL语句开始
+
 						|| line.toUpperCase().startsWith(INSERT)
 						|| line.toUpperCase().startsWith(UPDATE)
 						|| (line.toUpperCase().startsWith(CREATE) && (line.substring(7).trim().toUpperCase()
-								.startsWith("VIEW") || line.substring(7).trim().toUpperCase().indexOf("TABLE") > 0)) // 当不是create
-																														// macro时
+								.startsWith("VIEW") || line.substring(7).trim().toUpperCase().indexOf("TABLE") >= 0)) // 当不是create
+																														// macro时
+
 						|| line.toUpperCase().startsWith(DELETE)
 						// ||line.toUpperCase().startsWith(DROP)
 						|| line.toUpperCase().startsWith(ALTER)
 						|| line.toUpperCase().startsWith(COMMA)
 						|| (line.toUpperCase().startsWith(REPLACE) && line.substring(7).trim().toUpperCase()
-								.startsWith("VIEW"))) // 当不是replace macro时
+								.startsWith("VIEW"))) // 当不是replace macro时
+
 				{
 					buf = new StringBuffer("");
 					while (line != null)// 继续读入语句直到遇见分号表示当SQL语句结束
 					{
-						// 处理Tab符和注释行
+						// 处理Tab符和注释行
+
 						line = ignoreComment_Tab(line, br);
 						line = replaceIllegalLexical(line);
 						if (line != null && (line.startsWith(COMMA) || line.endsWith(COMMA)))// 解析分号位置，结束当前的SQL语句
@@ -204,7 +209,8 @@ public class SQLExtractUtil {
 				line = ignoreComment_Tab(line, br);
 			}
 		} else {
-			while (line != null && line.startsWith(COMMENT_SIGN))// 以--开头的注释行
+			while (line != null && line.startsWith(COMMENT_SIGN))// 以--开头的注释行
+
 			{
 				line = br.readLine();
 				if (line != null)
