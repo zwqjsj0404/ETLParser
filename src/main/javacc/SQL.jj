@@ -183,8 +183,8 @@ TOKEN [IGNORE_CASE] : {
 }
 
 TOKEN [IGNORE_CASE] : { /* KEYWORDS */
-
-  <DROP:        "drop">
+  <ALWAYS:      "always">
+| <DROP:        "drop">
 | <SHOW:        "show">
 | <ALTER:       "alter">
 | <SELECT:      "select"|"sel">
@@ -192,16 +192,16 @@ TOKEN [IGNORE_CASE] : { /* KEYWORDS */
 | <CREATE:      "create">
 | <DELETE:      "delete"|"del">
 | <INSERT:      "insert" | "ins">
-|	<REPLACE:			"replace">
+| <REPLACE:		"replace">
 | <COMMIT:      "commit">
 | <COMPACT:     "compact">
 | <EXPLAIN:     "explain">
 | <ROLLBACK:    "rollback">
 | <OPTIMIZE:    "optimize">
 | <SHUTDOWN:    "shutdown">
-| <FORMAT:			"format">
-| <TITLE:				"title">
-| <UPPERCASE:		"uppercase">
+| <FORMAT:		"format">
+| <TITLE:		"title">
+| <UPPERCASE:	"uppercase">
 | <CASESPECIFIC:"casespecific">
 | <PARTITION:		"partition">
 | <BY:					"by">
@@ -2329,7 +2329,7 @@ void ColumnConstraint(ColumnDef column) :
       | <COMPRESS> [ LOOKAHEAD(2) DoExpression() ]
       | <SQLDEFAULT> default_exp = DoExpression()  { column.setDefaultExpression(default_exp); }
       | <WITH> <SQLDEFAULT>
-      | <GENERATED> <BY> <SQLDEFAULT> <AS> <IDENTITY> "(" <START> <WITH> <NUMBER_LITERAL> <INCREMENT> <BY>  <NUMBER_LITERAL> ( <MAXVALUE> | <MINVALUE> )  <NUMBER_LITERAL> [ <NO> <CYCLE> ] ")"
+      | <GENERATED> [<BY> <SQLDEFAULT>] [<ALWAYS>] <AS> <IDENTITY> "(" <START> <WITH> <NUMBER_LITERAL> <INCREMENT> <BY>  <NUMBER_LITERAL> [( <MAXVALUE> | <MINVALUE> )  <NUMBER_LITERAL>] [<NO>] [<CYCLE>] ")"
     )    
 }
 
