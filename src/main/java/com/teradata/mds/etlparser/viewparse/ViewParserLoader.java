@@ -126,8 +126,13 @@ public class ViewParserLoader implements Runnable {
 	 * @return
 	 */
 	private List getViews() {
-		String sql = "SELECT " + "REQUESTTEXT AS VIEWSQL," + "DATABASENAME || '" + postfix + "' AS DB, " + "OBJ_ID AS OBJ_ID "
-				+ ", OBJNAME AS VIEWNAME " + "FROM MV04_VIEW ORDER BY 2, 4;";
+		String sql = "SELECT REQUESTTEXT AS VIEWSQL"
+               + "     , DATABASENAME || '" + postfix + "' AS DB"
+               + "     , DATABASENAME AS REALDB"
+               + "     , OBJ_ID AS OBJ_ID "
+				       + "     , OBJNAME AS VIEWNAME "
+               + "  FROM MV04_VIEW"
+               + " ORDER BY 2, 4;";
 
 		List views = new ArrayList();
 		try {
