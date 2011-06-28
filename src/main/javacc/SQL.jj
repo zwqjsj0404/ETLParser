@@ -903,7 +903,7 @@ void expression(Expression exp, Stack stack) :
 }
 {
 
-  Operand(exp, stack) ( LOOKAHEAD(2) OpPart(exp, stack) )* 
+  Operand(exp, stack) ( LOOKAHEAD(2) OpPart(exp, stack) )*
 
 }
 
@@ -959,7 +959,7 @@ void Operand(Expression exp, Stack stack) :
 }
 {
  ( 
- 	LOOKAHEAD(3) "(" { stack.push(Operator.get("(")); exp.text().append("("); }
+ 	LOOKAHEAD(3) [<NOT>] "(" { stack.push(Operator.get("(")); exp.text().append("("); }
         expression(exp, stack) ( "," expression(exp, stack) )* ")" { expEndParen(exp, stack); exp.text().append(")"); } [( <YEAR> | <MONTH> | <DAY> ) [ LOOKAHEAD(2)  "(" PositiveIntegerConstant() ")" ] ] [ LOOKAHEAD(2) "(" GetTType() ")"]
     | LOOKAHEAD(2) <NOT>
       { expOperator(exp, stack, Operator.get("not"));
