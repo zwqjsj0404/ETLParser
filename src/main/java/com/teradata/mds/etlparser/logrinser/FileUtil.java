@@ -172,7 +172,7 @@ public class FileUtil {
 						//return line + "\r";
 					} else {
 						//FIXME: 修改为合并行，有可能引起其它地方错误
-						return "\r" + line;	
+						return "\r" + line + "\r";
 						//return line;
 					}
 				}
@@ -367,6 +367,7 @@ public class FileUtil {
 	 */
 	private String processResult(String str) {
 		Pattern p = Pattern.compile("--(.*?)\r");
+
 		Matcher m = p.matcher(str);
 		StringBuffer sb = new StringBuffer();
 		while (m.find()) {

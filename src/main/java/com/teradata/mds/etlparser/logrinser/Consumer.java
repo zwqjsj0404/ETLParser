@@ -1,10 +1,6 @@
 package com.teradata.mds.etlparser.logrinser;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 
 import org.perf4j.StopWatch;
 import org.perf4j.log4j.Log4JStopWatch;
@@ -45,13 +41,16 @@ class Consumer implements Runnable {                   // 任务执行者
 		FileUtil fu = new FileUtil(SQLTAGs);
 		File file = txtfile.getFile();
 		try {
-			FileReader fr = new FileReader(file);
-			BufferedReader br = new BufferedReader(fr);
+      FileInputStream fis = new FileInputStream(file);
+      InputStreamReader isr = new InputStreamReader(fis, "GB2312");
+//			FileReader fr = new FileReader(isr);
+			BufferedReader br = new BufferedReader(isr);
 			
 			StopWatch watch = new Log4JStopWatch("LogRinser", txtfile.getFilename());
 			StringBuffer sb = fu.processFile1(br); 			// 第一次清理
 			br.close();
-			fr.close();
+			isr.close();
+      fis.close();
 			watch.lap("LogRinser : process1");
 			String result = fu.processFile2(sb);        // 第二次清理
 			watch.stop("LogRinser : process2");
