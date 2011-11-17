@@ -24,6 +24,7 @@
 
 options {
   STATIC = false;
+  UNICODE_INPUT = true;
   OPTIMIZE_TOKEN_MANAGER = true;
   DEBUG_PARSER = false;
 }
