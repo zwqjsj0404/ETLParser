@@ -1038,7 +1038,8 @@ public class SqlParser {
 
               resultColumn.put("expression", getSubComm(commentID));
               List oldConditions = (List) sourceColumn.get("conditions");
-              if(oldConditions != null) resultColumn.put("conditions", oldConditions);
+              if(oldConditions != null && oldConditions.size() > 0)
+                resultColumn.put("conditions", oldConditions);
               // logger.info(""+sysName+"."+tableName+"."+targetCName+" <==> "+sourceDBName+"."+sourceTName+"."+sourceCName+"  ===  "+commentID);
               resultColumnList.add(resultColumn);
 
@@ -1096,7 +1097,8 @@ public class SqlParser {
                   commentID = "Relation transformation is too complex, please refer to the script for detailed info...";
                 resultColumn.put("expression", getSubComm(commentID));
                 List oldConditions = (List) sourceColumn.get("conditions");
-                if(oldConditions != null) resultColumn.put("conditions", oldConditions);
+                if(oldConditions != null && oldConditions.size() > 0)
+                  resultColumn.put("conditions", oldConditions);
                 resultColumnList.add(resultColumn);
               }
               sourceColumns = null;
@@ -1699,7 +1701,8 @@ public class SqlParser {
 							resultColumn.put("expression", getSubComm(commentID));
 							
 							List oldConditions = (List) sourceColumn.get("conditions");
-							if(oldConditions != null) resultColumn.put("conditions", oldConditions);
+							if(oldConditions != null && oldConditions.size() > 0)
+                resultColumn.put("conditions", oldConditions);
 							resultColumnList.add(resultColumn);
 							
 						}
@@ -1746,7 +1749,8 @@ public class SqlParser {
 								resultColumn.put("sourceCName", (String) sourceColumn.get("columnName"));
 								resultColumn.put("expression", (String) sourceColumn.get("columnName"));
 								List oldConditions = (List) sourceColumn.get("conditions");
-								if(oldConditions != null) resultColumn.put("conditions", oldConditions);
+								if(oldConditions != null && oldConditions.size() > 0)
+                  resultColumn.put("conditions", oldConditions);
 								resultColumnList.add(resultColumn);
 							}
 						}
@@ -1840,7 +1844,8 @@ public class SqlParser {
 								commentID = insertComment(expression1);
 							resultColumn.put("expression", getSubComm(commentID));
 							List oldConditions = (List) sourceColumn.get("conditions");
-							if(oldConditions != null) resultColumn.put("conditions", oldConditions);
+							if(oldConditions != null && oldConditions.size() > 0)
+                resultColumn.put("conditions", oldConditions);
 							resultColumnList.add(resultColumn);
 						}
 					}
@@ -1881,7 +1886,8 @@ public class SqlParser {
 								resultColumn.put("sourceCName", (String) sourceColumn.get("columnName"));
 								resultColumn.put("expression", (String) sourceColumn.get("columnName"));
 								List oldConditions = (List) sourceColumn.get("conditions");
-								if(oldConditions != null) resultColumn.put("conditions", oldConditions);
+								if(oldConditions != null && oldConditions.size() > 0)
+                  resultColumn.put("conditions", oldConditions);
 								resultColumnList.add(resultColumn);
 							}
 						}
@@ -2549,6 +2555,7 @@ public class SqlParser {
 							sourceColumn.put("tableName", (String) column.get("sourceTName"));
 							sourceColumn.put("columnName", (String) column.get("sourceCName"));
 							sourceColumn.put("expression", exp);
+              sourceColumn.put("conditions", column.get("conditions"));
 							sourceColumnList.add(sourceColumn);
 						}
 					}
