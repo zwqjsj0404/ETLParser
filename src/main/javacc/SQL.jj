@@ -24,7 +24,6 @@
 
 options {
   STATIC = false;
-  UNICODE_INPUT = true;
   OPTIMIZE_TOKEN_MANAGER = true;
   DEBUG_PARSER = false;
 }
@@ -210,6 +209,7 @@ TOKEN [IGNORE_CASE] : { /* KEYWORDS */
 | <WHEN:				"when">
 | <THEN:				"then">
 | <END:					"end">
+| <RECURSIVE:   "recursive">
 
 
 | <IS:          "is">
@@ -639,7 +639,8 @@ TableSelectExpression GetTableSelectExpression() :
         [ table_expr.distinct = SetQuantifier() ]
         [ topClause() ]
         [ SelectColumnList(table_expr.columns) ]
-        [ <FROM> SelectTableList(table_expr.from_clause) ] 
+        [ LOOKAHEAD(2) <GROUP> <BY> SelectGroupByList(table_expr.group_by)]
+        [ <FROM> SelectTableList(table_expr.from_clause) ]
         [ LOOKAHEAD(2) ( <HAVING>| <QUALIFY> ) ConditionsExpression(table_expr.having_clause)]   
         [ LOOKAHEAD(2) <GROUP> <BY> SelectGroupByList(table_expr.group_by)]
         [ LOOKAHEAD(2) <ORDER> <BY> SelectOrderByList(order_by) ]
@@ -958,7 +959,7 @@ void Operand(Expression exp, Stack stack) :
   ArrayList list = new ArrayList();
 }
 {
- ( 
+ (
  	LOOKAHEAD(3) [<NOT>] "(" { stack.push(Operator.get("(")); exp.text().append("("); }
         expression(exp, stack) ( "," expression(exp, stack) )* ")" { expEndParen(exp, stack); exp.text().append(")"); } [( <YEAR> | <MONTH> | <DAY> ) [ LOOKAHEAD(2)  "(" PositiveIntegerConstant() ")" ] ] [ LOOKAHEAD(2) "(" GetTType() ")"]
     | LOOKAHEAD(2) <NOT>
@@ -1048,7 +1049,11 @@ void Operand(Expression exp, Stack stack) :
 	    | <NULL_LITERAL>    
 	    	{ 
 	    		exp.text().append("NULL");
-	    	}   
+	    	}
+	    | <USER>
+	        {
+	            exp.text().append("USER");
+	        }
 	    | exp1 = intervalExpression()	
 	    	{
 	    		exp.text().append(exp1.text().toString()); 
@@ -2088,7 +2093,7 @@ StatementTree Create() :
 { StatementTree ob;
 }
 {
-  (  ( <CREATE> | <REPLACE> )
+  (  ( <CREATE> | <REPLACE> [<RECURSIVE>])
     (   ob=CreateTable()
       //| ob=CreateTrigger()
       //| ob=CreateFunction()

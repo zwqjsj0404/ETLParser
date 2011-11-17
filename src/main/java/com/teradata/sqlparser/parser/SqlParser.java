@@ -1,13 +1,7 @@
 package com.teradata.sqlparser.parser;
 
 import java.io.File;
-import java.util.Collection;
-import java.util.Date;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import org.apache.log4j.Logger;
 
@@ -581,7 +575,7 @@ public class SqlParser {
 		// subquery of the table created from
 		StatementTree select = (StatementTree) map.get("as_clause");
 
-		List sourceColumns = new ArrayList();
+		Set<Map> sourceColumns;
 		List resultColumnList = new ArrayList();
 
 		if (select != null) {
@@ -663,8 +657,9 @@ public class SqlParser {
 					// 调用getSourceColumnList函数获得select中相关字段的源字段
 					for (int j = 0; j < columnNames.size(); j++) {
 						sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-						for (int z = 0; z < sourceColumns.size(); z++) {
-							HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+            Iterator iter = sourceColumns.iterator();
+						while (iter.hasNext()) {
+							HashMap sourceColumn = (HashMap) iter.next();
 							HashMap resultColumn = new HashMap();
 							resultColumn.put("targetDBName", sysName);
 							resultColumn.put("targetTName", tableName);
@@ -681,8 +676,9 @@ public class SqlParser {
 					// 调用getSourceColumnList函数获得select中相关字段的源字段
 					for (int j = 0; j < columnNames.size(); j++) {
 						sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-						for (int z = 0; z < sourceColumns.size(); z++) {
-							HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+            Iterator iter = sourceColumns.iterator();
+						while (iter.hasNext()) {
+							HashMap sourceColumn = (HashMap) iter.next();
 							HashMap resultColumn = new HashMap();
 							resultColumn.put("targetDBName", sysName);
 							resultColumn.put("targetTName", tableName);
@@ -705,7 +701,6 @@ public class SqlParser {
 				List columnsInComposite = selExp.columns;
 				for (int i = 0; i < col_list.size(); i++) {
 					String targetCName = (String) col_list.get(i);
-					sourceColumns = new ArrayList();
 					SelectColumn column = (SelectColumn) columnsInComposite.get(i);
 					List columnNames = new ArrayList();
 
@@ -720,8 +715,9 @@ public class SqlParser {
 
 						for (int j = 0; j < columnNames.size(); j++) {
 							sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-							for (int z = 0; z < sourceColumns.size(); z++) {
-								HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+              Iterator iter = sourceColumns.iterator();
+							while (iter.hasNext()) {
+								HashMap sourceColumn = (HashMap) iter.next();
 								HashMap resultColumn = new HashMap();
 								resultColumn.put("targetDBName", sysName);
 								resultColumn.put("targetTName", tableName);
@@ -737,8 +733,9 @@ public class SqlParser {
 						columnNames = getAllColumnsStarImplied(column, selExp);
 						for (int j = 0; j < columnNames.size(); j++) {
 							sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-							for (int z = 0; z < sourceColumns.size(); z++) {
-								HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+              Iterator iter = sourceColumns.iterator();
+							while (iter.hasNext()) {
+								HashMap sourceColumn = (HashMap) iter.next();
 								HashMap resultColumn = new HashMap();
 								resultColumn.put("targetDBName", sysName);
 								resultColumn.put("targetTName", tableName);
@@ -755,6 +752,7 @@ public class SqlParser {
 				}
 			}
 
+      if(resultColumnList.isEmpty()) return;
 			// 存储create表的源到volatileTableSorceList或commonTableSorceList中
 			if (ifVolatile.booleanValue()) {
 				HashMap volatileTableSource = new HashMap();
@@ -815,8 +813,7 @@ public class SqlParser {
 				}
 			}
 		}
-		List col_list = new ArrayList();
-		col_list = (ArrayList) map.get("col_list"); // colum names in target table
+		List col_list = (ArrayList) map.get("col_list"); // colum names in target table
 
 		// if col_list is null, meaning any default value defined in the CREATE
 		// TABLE or CREATE VIEW statement is used
@@ -848,7 +845,7 @@ public class SqlParser {
 		} else {
 			List resultColumnList = new ArrayList();
 			// insert...values...
-			List data_list = new ArrayList();
+			List data_list;
 			data_list = (ArrayList) map.get("data_list");
 			List values = (ArrayList) data_list.get(0);
 			if (col_list.size() == values.size()) {
@@ -883,7 +880,7 @@ public class SqlParser {
 		int index = -1;
 		index = volatileIndex(tableNameWithDot);
 		// add all the valatile table resources into volatileTableSourceList
-		if (index >= 0) {
+		if (index >= 0 && !resultColumns.isEmpty()) {
 			volatileTableSource.put("sqlIndex", new Integer(index));
 			volatileTableSource.put("table_name", tableNameWithDot);
 			// System.out.println(": "+resultColumnList);
@@ -916,7 +913,7 @@ public class SqlParser {
 
   private void parseSelectInInsert(List resultColumns, String tableName, String sysName, List col_list, TableSelectExpression selExp) throws MDSException {
     // get all related columns
-    List sourceColumns = new ArrayList();
+    Set<Map> sourceColumns;
     List columns = selExp.columns;
     List tempColList = new ArrayList();
     // if having * in select clause, replace it with column names implied
@@ -959,7 +956,7 @@ public class SqlParser {
       for (int i = 0; i < col_list.size(); i++) {
         String targetCName = (String) col_list.get(i);
         SelectColumn column = (SelectColumn) columns.get(i);
-        List columnNames = new ArrayList();
+        List columnNames;
         String alias = column.alias;
         String exp = "";
 
@@ -988,15 +985,22 @@ public class SqlParser {
 
           // 调用getSourceColumnList函数获得select中相关字段的源字段
           for (int j = 0; j < columnNames.size(); j++) {
-            List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
+            Set<Map> directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
             if(directSourceColumns.size() == 1) {
               //只处理一对一关联的
-              Map col = (Map) directSourceColumns.get(0);
+              Map col = (Map) directSourceColumns.iterator().next();
               String sourceDBName = (String) col.get("databaseName");
               String sourceTName = (String) col.get("tableName");
               String sourceCName = (String) col.get("columnName");
               if(sourceCName.indexOf("_constant_") == -1) {
                 Map directRela = new HashMap();
+
+                if( sysName.equalsIgnoreCase(sourceDBName)
+                   && tableName.equalsIgnoreCase(sourceTName)
+                   && targetCName.equalsIgnoreCase(sourceCName)) {
+                  System.out.println("The same");
+                }
+
                 directRela.put("targetDBName", sysName);
                 directRela.put("targetTName", tableName);
                 directRela.put("targetCName", targetCName);
@@ -1016,9 +1020,9 @@ public class SqlParser {
             // logger.info("get sourceColumn time=>"+(parseEndTime - parseStartTime));
 
             temp_relation_num = temp_relation_num + sourceColumns.size();
-
-            for (int z = 0; z < sourceColumns.size(); z++) {
-              HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+            Iterator iter = sourceColumns.iterator();
+            while (iter.hasNext()) {
+              HashMap sourceColumn = (HashMap) iter.next();
               HashMap resultColumn = new HashMap();
               resultColumn.put("targetDBName", sysName);
               resultColumn.put("targetTName", tableName);
@@ -1052,15 +1056,22 @@ public class SqlParser {
           if (col_list.size() == columnNames.size()) {
             // 调用getSourceColumnList函数获得select中相关字段的源字段
             for (int j = 0; j < columnNames.size(); j++) {
-              List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
+              Set<Map> directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
               if(directSourceColumns.size() == 1) {
                 //只处理一对一关联的
-                Map col = (Map) directSourceColumns.get(0);
+                Map col = (Map) directSourceColumns.iterator().next();
                 String sourceDBName = (String) col.get("databaseName");
                 String sourceTName = (String) col.get("tableName");
                 String sourceCName = (String) col.get("columnName");
                 if(sourceCName.indexOf("_constant_") == -1) {
                   Map directRela = new HashMap();
+
+                  if( sysName.equalsIgnoreCase(sourceDBName)
+                     && tableName.equalsIgnoreCase(sourceTName)
+                     && targetCName.equalsIgnoreCase(sourceCName)) {
+                    System.out.println("The same");
+                  }
+
                   directRela.put("targetDBName", sysName);
                   directRela.put("targetTName", tableName);
                   directRela.put("targetCName", targetCName);
@@ -1074,8 +1085,9 @@ public class SqlParser {
 
               sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
               temp_relation_num = temp_relation_num + sourceColumns.size();
-              for (int z = 0; z < sourceColumns.size(); z++) {
-                HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+              Iterator iter = sourceColumns.iterator();
+              while (iter.hasNext()) {
+                HashMap sourceColumn = (HashMap) iter.next();
                 HashMap resultColumn = new HashMap();
                 resultColumn.put("targetDBName", sysName);
                 resultColumn.put("targetTName", tableName);
@@ -1457,8 +1469,11 @@ public class SqlParser {
 			} else if(oper.is("= ANY")) {
         //TODO 后续要做什么处理？
 				Expression[] subExps = exp.split();
-				//System.out.println(subExps);
-			}
+				System.out.println(subExps);
+			} else {
+        //所有其它的操作符
+        logger.debug("There is an unknown oper: " + oper.toString());
+      }
 		} 
 		
 		return conditions;
@@ -1593,7 +1608,7 @@ public class SqlParser {
 	 * @throws MDSException
 	 */
 	public List parseCreateView(StatementTree sTree, String sysName) throws MDSException {
-		List sourceColumns = new ArrayList();
+		Set<Map> sourceColumns;
 		List resultColumns = new ArrayList();
 		List directColumnList = new ArrayList();		//保存直接关系的列表
 		
@@ -1656,10 +1671,10 @@ public class SqlParser {
 
 					// 调用getSourceColumnList函数获得select中相关字段的源字段
 					for (int j = 0; j < columnNames.size(); j++) {
-						List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
+						Set<Map> directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
 						if(directSourceColumns.size() == 1) {
 							//只处理一对一关联的
-							Map col = (Map) directSourceColumns.get(0);
+							Map col = (Map) directSourceColumns.iterator().next();
 							String sourceDBName = (String) col.get("databaseName");
 							String sourceTName = (String) col.get("tableName");
 							String sourceCName = (String) col.get("columnName");
@@ -1676,10 +1691,10 @@ public class SqlParser {
 							}
 						}
 						
-						
 						sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-						for (int z = 0; z < sourceColumns.size(); z++) {
-							HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+            Iterator iter = sourceColumns.iterator();
+						while (iter.hasNext()) {
+							HashMap sourceColumn = (HashMap) iter.next();
 							HashMap resultColumn = new HashMap();
 							resultColumn.put("targetDBName", targetSysName);
 							resultColumn.put("targetTName", targetViewName);
@@ -1709,10 +1724,10 @@ public class SqlParser {
 					if (col_list.size() == columnNames.size()) {
 						// 调用getSourceColumnList函数获得select中相关字段的源字段
 						for (int j = 0; j < columnNames.size(); j++) {
-							List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
+							Set<Map> directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
 							if(directSourceColumns.size() == 1) {
 								//只处理一对一关联的
-								Map col = (Map) directSourceColumns.get(0);
+								Map col = (Map) directSourceColumns.iterator().next();
 								String sourceDBName = (String) col.get("databaseName");
 								String sourceTName = (String) col.get("tableName");
 								String sourceCName = (String) col.get("columnName");
@@ -1731,9 +1746,9 @@ public class SqlParser {
 							
 							
 							sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-
-							for (int z = 0; z < sourceColumns.size(); z++) {
-								HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+              Iterator iter = sourceColumns.iterator();
+							while (iter.hasNext()) {
+								HashMap sourceColumn = (HashMap) iter.next();
 								HashMap resultColumn = new HashMap();
 								resultColumn.put("targetDBName", targetSysName);
 								resultColumn.put("targetTName", targetViewName);
@@ -1785,9 +1800,8 @@ public class SqlParser {
 			List columnsInComposite = selExp.columns;
 
 			for (int i = 0; i < col_list.size(); i++) {
-				sourceColumns = new ArrayList();
 				SelectColumn column = (SelectColumn) columnsInComposite.get(i);
-				List columnNames = new ArrayList();
+				List columnNames;
 
 				String alias = column.alias;
 				String exp = "";
@@ -1800,10 +1814,10 @@ public class SqlParser {
 
 					// 调用getSourceColumnList函数获得select中相关字段的源字段
 					for (int j = 0; j < columnNames.size(); j++) {
-						List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
+						Set<Map> directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
 						if(directSourceColumns.size() == 1) {
 							//只处理一对一关联的
-							Map col = (Map) directSourceColumns.get(0);
+							Map col = (Map) directSourceColumns.iterator().next();
 							String sourceDBName = (String) col.get("databaseName");
 							String sourceTName = (String) col.get("tableName");
 							String sourceCName = (String) col.get("columnName");
@@ -1820,8 +1834,9 @@ public class SqlParser {
 							}
 						}
 						sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-						for (int z = 0; z < sourceColumns.size(); z++) {
-							HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+            Iterator iter = sourceColumns.iterator();
+						while (iter.hasNext()) {
+							HashMap sourceColumn = (HashMap) iter.next();
 							HashMap resultColumn = new HashMap();
 							resultColumn.put("targetDBName", targetSysName);
 							resultColumn.put("targetTName", targetViewName);
@@ -1846,10 +1861,10 @@ public class SqlParser {
 					if (col_list.size() == columnNames.size()) {
 						// 调用getSourceColumnList函数获得select中相关字段的源字段
 						for (int j = 0; j < columnNames.size(); j++) {
-							List directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
+							Set<Map> directSourceColumns = getDirectSourceColumnList((String) columnNames.get(j), exp, selExp);
 							if(directSourceColumns.size() == 1) {
 								//只处理一对一关联的
-								Map col = (Map) directSourceColumns.get(0);
+								Map col = (Map) directSourceColumns.iterator().next();
 								String sourceDBName = (String) col.get("databaseName");
 								String sourceTName = (String) col.get("tableName");
 								String sourceCName = (String) col.get("columnName");
@@ -1866,8 +1881,9 @@ public class SqlParser {
 								}
 							}
 							sourceColumns = getSourceColumnList((String) columnNames.get(j), exp, selExp);
-							for (int z = 0; z < sourceColumns.size(); z++) {
-								HashMap sourceColumn = (HashMap) sourceColumns.get(z);
+              Iterator iter = sourceColumns.iterator();
+							while (iter.hasNext()) {
+								HashMap sourceColumn = (HashMap) iter.next();
 								HashMap resultColumn = new HashMap();
 								resultColumn.put("targetDBName", targetSysName);
 								resultColumn.put("targetTName", targetViewName);
@@ -2474,10 +2490,10 @@ public class SqlParser {
 	 * @return
 	 * @throws MDSException
 	 */
-	public List getSourceColumnList(String qualifyName, String columnExpStr, String inputTableName, boolean isVolatile)
+	public Set<Map> getSourceColumnList(String qualifyName, String columnExpStr, String inputTableName, boolean isVolatile)
 			throws MDSException {
-		List sourceColumnList = new ArrayList();
-		HashSet columnSet = new HashSet();
+		Set<Map> sourceColumnList = new HashSet<Map>();
+		HashSet columnSet;
 		int index = -1;
 		if (isVolatile) {
 			//TODO:这里是通过临时表找源字段的地方
@@ -2487,10 +2503,9 @@ public class SqlParser {
 				Integer volatileIndex = (Integer) volatileTable.get("sqlIndex");
 				if (index == volatileIndex.intValue()) {
 					columnSet = (HashSet) volatileTable.get("sourceColumnList");
-					List columnList = new ArrayList(columnSet);
-
-					for (int j = 0; j < columnList.size(); j++) {
-						HashMap column = (HashMap) columnList.get(j);
+          Iterator iter = columnSet.iterator();
+					while(iter.hasNext()) {
+						HashMap column = (HashMap) iter.next();
 						HashMap sourceColumn = new HashMap();
 						String t_column_name = (String) column.get("targetCName");
 						if (!"".equals(column.get("targetTName"))) {
@@ -2506,10 +2521,10 @@ public class SqlParser {
 								String relationComm = getComment(commentID);
 								exp = relationComm + " ==> " + columnExpStr;
 							}
-							sourceColumn.put("tableName", (String) column.get("sourceTName"));
-							sourceColumn.put("columnName", (String) column.get("sourceCName"));
+							sourceColumn.put("tableName", column.get("sourceTName"));
+							sourceColumn.put("columnName", column.get("sourceCName"));
 							sourceColumn.put("expression", exp);
-							sourceColumn.put("conditions", (List) column.get("conditions"));
+							sourceColumn.put("conditions", column.get("conditions"));
 							sourceColumnList.add(sourceColumn);
 							// break;
 						}
@@ -2553,10 +2568,10 @@ public class SqlParser {
 				}
 			}
 		}
-		return new ArrayList(new HashSet(sourceColumnList));
+		return sourceColumnList;
 	}
 
-	private List getDirectSourceColumnList(String qualifyName, String columnExpStr, String inputTableName,
+	private Set<Map> getDirectSourceColumnList(String qualifyName, String columnExpStr, String inputTableName,
 			boolean isVolatile) throws MDSException {
 		//FIXME:还没实现
 		String[] tmp = qualifyName.split("\\.");
@@ -2566,7 +2581,7 @@ public class SqlParser {
 		} else {
 			col_name = tmp[0];
 		}
-		List sourceColumnList = new ArrayList();
+		Set<Map> sourceColumnList = new HashSet<Map>();
 		int index = -1;
 		if (isVolatile) {
 			// TODO:这里是通过临时表找源字段的地方
@@ -2621,15 +2636,15 @@ public class SqlParser {
 			}
 
 		}
-		return new ArrayList(new HashSet(sourceColumnList));
+		return sourceColumnList;
 	}
 	
 	/**
 	 * 取得直接的SourceColumn列表
 	 */
-	private List getDirectSourceColumnList(String qualifyName, String columnExpStr, TableSelectExpression select) 
+	private Set<Map> getDirectSourceColumnList(String qualifyName, String columnExpStr, TableSelectExpression select)
 		throws MDSException {
-		List sourceColumnList = new ArrayList();
+		Set<Map> sourceColumnList = new HashSet<Map>();
 		HashMap sourceColumn = new HashMap();
 		String temp[] = null;
 		if(qualifyName.indexOf("_constant_") == 0) {
@@ -2677,7 +2692,7 @@ public class SqlParser {
 					if (subQueryExp != null) {
 						while (subQueryExp.composite_function != -1) {
 							subQueryExp = subQueryExp.next_composite;
-							List sourceColumnsIncomposite = getDirectSourceColumnList(temp[1].trim(), columnExpStr,
+							Set<Map> sourceColumnsIncomposite = getDirectSourceColumnList(temp[1].trim(), columnExpStr,
 									subQueryExp);
 							sourceColumnList.addAll(sourceColumnsIncomposite);
 
@@ -2889,7 +2904,7 @@ public class SqlParser {
 													subQueryExp);
 
 										} else if (qualifyName.equalsIgnoreCase(columnAliasName)) {
-											List sColumnList = getDirectSourceColumnList(columnName, columnExpStr,
+											Set<Map> sColumnList = getDirectSourceColumnList(columnName, columnExpStr,
 													subQueryExp);
 											sourceColumnList.addAll(sColumnList);
 
@@ -2910,7 +2925,7 @@ public class SqlParser {
 											String columnName = (String) column.get("columnName");
 											String columnAliasName = (String) column.get("columnAlias");
 											String columnExpression = (String) column.get("columnExpression");
-											List sColumnList = new ArrayList();
+											Set<Map> sColumnList = new HashSet<Map>();
 											if (qualifyName.equalsIgnoreCase(columnName)) {
 												if (!hasAdded) {
 													columnExpStr = columnExpStr;// + "<==" + columnExpression;
@@ -2951,7 +2966,7 @@ public class SqlParser {
 								columnExpStr = column_Exp + " AS " + column_Alias + "  ==>  " + columnExpStr;
 								hasAdded = true;
 							}
-							List sColumnList = getDirectSourceColumnList(column_Name, columnExpStr, select);
+							Set<Map> sColumnList = getDirectSourceColumnList(column_Name, columnExpStr, select);
 							sourceColumnList.addAll(sColumnList);
 
 							// for (int j = 0; j < sColumnList.size(); j++) {
@@ -3008,9 +3023,9 @@ public class SqlParser {
 	 * @return
 	 * @throws MDSException
 	 */
-	public List getSourceColumnList(String qualifyName, String columnExpStr, TableSelectExpression select)
+	public Set<Map> getSourceColumnList(String qualifyName, String columnExpStr, TableSelectExpression select)
 			throws MDSException {
-		List sourceColumnList = new ArrayList();
+		Set<Map> sourceColumnList = new HashSet<Map>();
 		HashMap sourceColumn = new HashMap();
 		String temp[] = null;
 		if(qualifyName.indexOf("_constant_") == 0) {
@@ -3064,7 +3079,7 @@ public class SqlParser {
 					if (subQueryExp != null) {
 						while (subQueryExp.composite_function != -1) {
 							subQueryExp = subQueryExp.next_composite;
-							List sourceColumnsIncomposite = getSourceColumnList(temp[1].trim(), columnExpStr,
+							Set<Map> sourceColumnsIncomposite = getSourceColumnList(temp[1].trim(), columnExpStr,
 									subQueryExp);
 							sourceColumnList.addAll(sourceColumnsIncomposite);
 
@@ -3266,7 +3281,7 @@ public class SqlParser {
 													subQueryExp);
 
 										} else if (qualifyName.equalsIgnoreCase(columnAliasName)) {
-											List sColumnList = getSourceColumnList(columnName, columnExpStr,
+											Set<Map> sColumnList = getSourceColumnList(columnName, columnExpStr,
 													subQueryExp);
 											sourceColumnList.addAll(sColumnList);
 
@@ -3287,7 +3302,7 @@ public class SqlParser {
 											String columnName = (String) column.get("columnName");
 											String columnAliasName = (String) column.get("columnAlias");
 											String columnExpression = (String) column.get("columnExpression");
-											List sColumnList = new ArrayList();
+											Set<Map> sColumnList = new HashSet<Map>();
 											if (qualifyName.equalsIgnoreCase(columnName)) {
 												if (!hasAdded) {
 													columnExpStr = columnExpStr;// + "<==" + columnExpression;
@@ -3328,7 +3343,7 @@ public class SqlParser {
 								columnExpStr = column_Exp + " AS " + column_Alias + "  ==>  " + columnExpStr;
 								hasAdded = true;
 							}
-							List sColumnList = getSourceColumnList(column_Name, columnExpStr, select);
+							Set<Map> sColumnList = getSourceColumnList(column_Name, columnExpStr, select);
 							sourceColumnList.addAll(sColumnList);
 
 							// for (int j = 0; j < sColumnList.size(); j++) {
@@ -3595,9 +3610,9 @@ public class SqlParser {
 		if (pos > 0) 
 			fileName = fileName.substring(0, pos);
 		String scriptID = getScriptID(fileName);
-		
+
 		for (int i = 0; i < sqlList.size(); i++) {
-			List sourceColumns = new ArrayList();
+			List sourceColumns;
 			sqlIndex = i;
 
 			String sql = (String) sqlList.get(i);
@@ -3802,13 +3817,11 @@ public class SqlParser {
 				}
 			} catch (Throwable e) {
 				logger.error("=======><" + fileName + ">Sql sentence:\n" + sql + "\n", e);
-				logger.error("=====================================================>");
 				throw new MDSException(e);
 			} finally {
 				// System.gc();
 			}
-			if (sourceColumns != null)
-				sourceColumns.clear();
+
 			parser = null;
 			statement = null;
 		}

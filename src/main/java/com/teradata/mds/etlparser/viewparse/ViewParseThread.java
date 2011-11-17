@@ -86,7 +86,15 @@ public class ViewParseThread implements Runnable {
     String viewname = view.get("DB") + "." + view.get("VIEWNAME");
     String realviewname = (String) view.get("VIEWNAME");
 
-    if("DBC".equalsIgnoreCase(realdb) || "PDCRINFO".equalsIgnoreCase(realdb)) {
+    if("DBC".equalsIgnoreCase(realdb)
+            || "PDCRINFO".equalsIgnoreCase(realdb)
+            || "EXPLAIN".equalsIgnoreCase(realdb)
+            || "SQLJ".equalsIgnoreCase(realdb)
+            || "SysAdmin".equalsIgnoreCase(realdb)
+            || "Sys_Calendar".equalsIgnoreCase(realdb)
+            || "dbcmngr".equalsIgnoreCase(realdb)
+            || "dw_mds".equalsIgnoreCase(realdb)
+       ) {
       logger.warn("Skip system views : " + realdb + "." + realviewname);
       RelaParser.addSucess();
       return result;
