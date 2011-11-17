@@ -887,7 +887,7 @@ public class SqlParser {
 			volatileTableSource.put("sourceColumnList", new HashSet(resultColumns));
 			//TODO:这里加入常量字段后在放到volatileTableSourceList中
 			volatileTableSource.put("ConstConditions", null);
-			
+
 			volatileTableSourceList.add(volatileTableSource);
 			volatileTableSource = null;
 			resultColumns = new ArrayList();
@@ -995,12 +995,6 @@ public class SqlParser {
               if(sourceCName.indexOf("_constant_") == -1) {
                 Map directRela = new HashMap();
 
-                if( sysName.equalsIgnoreCase(sourceDBName)
-                   && tableName.equalsIgnoreCase(sourceTName)
-                   && targetCName.equalsIgnoreCase(sourceCName)) {
-                  System.out.println("The same");
-                }
-
                 directRela.put("targetDBName", sysName);
                 directRela.put("targetTName", tableName);
                 directRela.put("targetCName", targetCName);
@@ -1065,12 +1059,6 @@ public class SqlParser {
                 String sourceCName = (String) col.get("columnName");
                 if(sourceCName.indexOf("_constant_") == -1) {
                   Map directRela = new HashMap();
-
-                  if( sysName.equalsIgnoreCase(sourceDBName)
-                     && tableName.equalsIgnoreCase(sourceTName)
-                     && targetCName.equalsIgnoreCase(sourceCName)) {
-                    System.out.println("The same");
-                  }
 
                   directRela.put("targetDBName", sysName);
                   directRela.put("targetTName", tableName);
