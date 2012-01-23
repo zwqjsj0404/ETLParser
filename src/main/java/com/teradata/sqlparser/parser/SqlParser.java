@@ -60,7 +60,7 @@ public class SqlParser {
 	 * table对应的sql的index值保存起来，选择两者距离最近的一个create table语句。 Type：int "table_name" table name of the volatile talbe. Type:
 	 * String "sourceColumnList" source columns of the volatile table. Type: ArrayList
 	 **/
-	private List volatileTableSourceList = new ArrayList();
+	private  Map<Integer, Map<Integer, Map>> volatileTableSourceList = new HashMap<Integer, Map<Integer, Map>>();
 
 	/**
 	 * HashMap列表，用来存储log文件中创建的非临时表信息。HashMap结构详细见parserCreateTalbe（）方法
@@ -70,7 +70,7 @@ public class SqlParser {
 	/**
 	 * HashMap列表，用来存储log文件中的common表每个列对应的源信息。HashMap结构详细见parserInsert（）方法。
 	 **/
-	private List commonTableSourceList = new ArrayList();
+	private Map<Integer, Map<Integer, Map>> commonTableSourceList = new HashMap<Integer, Map<Integer, Map>>();
 
 	private static Logger logger = Logger.getLogger(SqlParser.class);
 
@@ -755,24 +755,104 @@ public class SqlParser {
       if(resultColumnList.isEmpty()) return;
 			// 存储create表的源到volatileTableSorceList或commonTableSorceList中
 			if (ifVolatile.booleanValue()) {
-				HashMap volatileTableSource = new HashMap();
-				volatileTableSource.put("sqlIndex", new Integer(index));
-				volatileTableSource.put("table_name", tableNameWithDot);
-				// System.out.println(": "+resultColumnList);
-				volatileTableSource.put("sourceColumnList", new HashSet(resultColumnList));
-				volatileTableSourceList.add(volatileTableSource);
+        int volatileIndex = volatileIndex(tableNameWithDot);
+        addResultToVolatileTableSourceList(volatileIndex, resultColumnList);
 			} else {
-				HashMap commonTableSource = new HashMap();
-				commonTableSource.put("sqlIndex", new Integer(index));
-				commonTableSource.put("table_name", tableNameWithDot);
-				// System.out.println(": "+resultColumnList);
-				commonTableSource.put("sourceColumnList", new HashSet(resultColumnList));
-				commonTableSourceList.add(commonTableSource);
+        int commonIndex = commonIndex(tableNameWithDot);
+        addResultToCommonTableSourceList(commonIndex, resultColumnList);
 			}
 		}
 	}
 
-	public boolean ifBeyondLimit() {
+  private void addResultToVolatileTableSourceList(int volatileIndex, List resultColumnList) {
+    if(volatileIndex < 0) return;
+    Map<Integer, Map> tableSourceList = volatileTableSourceList.get(volatileIndex);
+    //计算Key值
+    if(tableSourceList == null) {
+      tableSourceList = new HashMap<Integer, Map>();
+      volatileTableSourceList.put(volatileIndex, tableSourceList);
+    }
+
+    for(int i=0; i<resultColumnList.size(); i++) {
+      Map resultColumn = (Map) resultColumnList.get(i);
+      String tgtDBName = (String) resultColumn.get("targetDBName");
+      String tgtTName = (String) resultColumn.get("targetTName");
+      String tgtCName = (String) resultColumn.get("targetCName");
+      String srcDBName = (String) resultColumn.get("sourceDBName");
+      String srcTName = (String) resultColumn.get("sourceTName");
+      String srcCName = (String) resultColumn.get("sourceCName");
+      String expression = (String) resultColumn.get("expression");
+      List conditions = (List) resultColumn.get("conditions");
+
+      if("".equals(srcDBName) || "".equals(srcTName)) {
+        //System.out.println("error");
+      }
+
+      //计算key值
+      String srcfullname = tgtDBName + "." + tgtTName + "." + tgtCName + "|"
+              + srcDBName + "." + srcTName + "." + srcCName;
+
+      Integer key = srcfullname.hashCode();
+      Map tableSrc = tableSourceList.get(key);
+      if(tableSrc == null) {
+        tableSourceList.put(key, resultColumn);
+      } else {
+        List oldConditions = (List) tableSrc.get("conditions");
+        if(oldConditions == null) oldConditions = new ArrayList();
+        tableSrc.put("conditions", oldConditions);
+        if(conditions != null && conditions.size() > 0) {
+          logger.debug("merge conditions");
+          oldConditions.add(conditions);
+        }
+      }
+    }
+  }
+
+  private void addResultToCommonTableSourceList(int commonIndex, List resultColumnList) {
+    if(commonIndex < 0) return;
+    Map<Integer, Map> tableSourceList = commonTableSourceList.get(commonIndex);
+    //计算Key值
+    if(tableSourceList == null) {
+      tableSourceList = new HashMap<Integer, Map>();
+      commonTableSourceList.put(commonIndex, tableSourceList);
+    }
+
+    for(int i=0; i<resultColumnList.size(); i++) {
+      Map resultColumn = (Map) resultColumnList.get(i);
+      String tgtDBName = (String) resultColumn.get("targetDBName");
+      String tgtTName = (String) resultColumn.get("targetTName");
+      String tgtCName = (String) resultColumn.get("targetCName");
+      String srcDBName = (String) resultColumn.get("sourceDBName");
+      String srcTName = (String) resultColumn.get("sourceTName");
+      String srcCName = (String) resultColumn.get("sourceCName");
+      String expression = (String) resultColumn.get("expression");
+      List conditions = (List) resultColumn.get("conditions");
+
+      if("".equals(srcDBName) || "".equals(srcTName)) {
+        System.out.println("error");
+      }
+
+      //计算key值
+      String srcfullname = tgtDBName + "." + tgtTName + "." + tgtCName + "|"
+              + srcDBName + "." + srcTName + "." + srcCName;
+
+      Integer key = srcfullname.hashCode();
+      Map tableSrc = tableSourceList.get(key);
+      if(tableSrc == null) {
+        tableSourceList.put(key, resultColumn);
+      } else {
+        List oldConditions = (List) tableSrc.get("conditions");
+        if(oldConditions == null) oldConditions = new ArrayList();
+        tableSrc.put("conditions", oldConditions);
+        if(conditions != null && conditions.size() > 0) {
+          logger.debug("merge conditions");
+          oldConditions.add(conditions);
+        }
+      }
+    }
+  }
+
+  public boolean ifBeyondLimit() {
 		boolean beyond = false;
 		if (temp_relation_num > 150000)
 			beyond = true;
@@ -881,33 +961,15 @@ public class SqlParser {
 		index = volatileIndex(tableNameWithDot);
 		// add all the valatile table resources into volatileTableSourceList
 		if (index >= 0 && !resultColumns.isEmpty()) {
-			volatileTableSource.put("sqlIndex", new Integer(index));
-			volatileTableSource.put("table_name", tableNameWithDot);
-			// System.out.println(": "+resultColumnList);
-			volatileTableSource.put("sourceColumnList", new HashSet(resultColumns));
-			//TODO:这里加入常量字段后在放到volatileTableSourceList中
-			volatileTableSource.put("ConstConditions", null);
-
-			volatileTableSourceList.add(volatileTableSource);
-			volatileTableSource = null;
-			resultColumns = new ArrayList();
-			return resultColumns;
-		}
-
-		else
+      int volatileIndex = volatileIndex(tableNameWithDot);
+      addResultToVolatileTableSourceList(volatileIndex, resultColumns);
+      resultColumns.clear();
+		} else {
 			index = commonIndex(tableNameWithDot);
+      addResultToCommonTableSourceList(index, resultColumns);
+      resultColumns.clear();
+    }
 
-		if (index >= 0) {
-			commonTableSource.put("sqlIndex", new Integer(index));
-			commonTableSource.put("table_name", tableNameWithDot);
-			// System.out.println(": "+resultColumnList);
-			commonTableSource.put("sourceColumnList", new HashSet(resultColumns));
-			//TODO:这里加入常量字段后再放到commonTableSourceList中
-			commonTableSourceList.add(commonTableSource);
-			commonTableSource = null;
-			resultColumns = new ArrayList();
-			return resultColumns;
-		}
 		return new ArrayList(new HashSet(resultColumns));
 	}
 
@@ -2089,6 +2151,11 @@ public class SqlParser {
 					List columns = sub_query.columns;
 					for (int i = 0; i < columns.size(); i++) {
 						SelectColumn selColumn = (SelectColumn) columns.get(i);
+
+            if(selColumn.glob_name.indexOf("*") > 0) {
+              logger.error("find nesting *");   //TODO *号嵌套 pbf_midd_fin_prod_info0200.pl.295.log
+              continue;
+            }
 						String alias = selColumn.alias;
 						String cName = "";
 						if (alias == null || alias.length() == 0)
@@ -2487,81 +2554,143 @@ public class SqlParser {
 	public Set<Map> getSourceColumnList(String qualifyName, String columnExpStr, String inputTableName, boolean isVolatile)
 			throws MDSException {
 		Set<Map> sourceColumnList = new HashSet<Map>();
-		HashSet columnSet;
 		int index = -1;
 		if (isVolatile) {
-			//TODO:这里是通过临时表找源字段的地方
-			index = volatileIndex(inputTableName);
-			for (int i = 0; i < volatileTableSourceList.size(); i++) {
-				HashMap volatileTable = (HashMap) volatileTableSourceList.get(i);
-				Integer volatileIndex = (Integer) volatileTable.get("sqlIndex");
-				if (index == volatileIndex.intValue()) {
-					columnSet = (HashSet) volatileTable.get("sourceColumnList");
-          Iterator iter = columnSet.iterator();
-					while(iter.hasNext()) {
-						HashMap column = (HashMap) iter.next();
-						HashMap sourceColumn = new HashMap();
-						String t_column_name = (String) column.get("targetCName");
-						if (!"".equals(column.get("targetTName"))) {
-							t_column_name = column.get("targetTName") + "." + t_column_name;
-							if (!"".equals(column.get("targetDBName")))
-								t_column_name = column.get("targetDBName") + "." + t_column_name;
-						}
-						if (t_column_name.equalsIgnoreCase(qualifyName)) {
-							sourceColumn.put("databaseName", (String) column.get("sourceDBName"));
-							String commentID = (String) column.get("expression");
-							String exp = commentID + " ==> " + columnExpStr;
-							if (sqlNum > sql_num_limit) {
-								String relationComm = getComment(commentID);
-								exp = relationComm + " ==> " + columnExpStr;
-							}
-							sourceColumn.put("tableName", column.get("sourceTName"));
-							sourceColumn.put("columnName", column.get("sourceCName"));
-							sourceColumn.put("expression", exp);
-							sourceColumn.put("conditions", column.get("conditions"));
-							sourceColumnList.add(sourceColumn);
-							// break;
-						}
-					}
-				}
-			}
+      index = volatileIndex(inputTableName);
+      Map<Integer, Map> volatileTableSource = volatileTableSourceList.get(index);
+      if(volatileTableSource == null) {
+        volatileTableSource = new HashMap<Integer, Map>();
+        volatileTableSourceList.put(index, volatileTableSource);
+      }
+      Collection<Map> columnSet = volatileTableSource.values();
+
+      for(Map column : columnSet) {
+        HashMap sourceColumn = new HashMap();
+        String t_column_name = (String) column.get("targetCName");
+        if (!"".equals(column.get("targetTName"))) {
+          t_column_name = column.get("targetTName") + "." + t_column_name;
+          if (!"".equals(column.get("targetDBName")))
+            t_column_name = column.get("targetDBName") + "." + t_column_name;
+        }
+        if (t_column_name.equalsIgnoreCase(qualifyName)) {
+          sourceColumn.put("databaseName", (String) column.get("sourceDBName"));
+          String commentID = (String) column.get("expression");
+          String exp = commentID + " ==> " + columnExpStr;
+          if (sqlNum > sql_num_limit) {
+            String relationComm = getComment(commentID);
+            exp = relationComm + " ==> " + columnExpStr;
+          }
+          sourceColumn.put("tableName", (String) column.get("sourceTName"));
+          sourceColumn.put("columnName", (String) column.get("sourceCName"));
+          sourceColumn.put("expression", exp);
+          sourceColumn.put("conditions", column.get("conditions"));
+          sourceColumnList.add(sourceColumn);
+        }
+      }
+
+//      Set columnSet;
+//			//TODO:这里是通过临时表找源字段的地方
+//			index = volatileIndex(inputTableName);
+//			for (int i = 0; i < volatileTableSourceList.size(); i++) {
+//				HashMap volatileTable = (HashMap) volatileTableSourceList.get(i);
+//				Integer volatileIndex = (Integer) volatileTable.get("sqlIndex");
+//				if (index == volatileIndex.intValue()) {
+//					columnSet = (HashSet) volatileTable.get("sourceColumnList");
+//          Iterator iter = columnSet.iterator();
+//					while(iter.hasNext()) {
+//						HashMap column = (HashMap) iter.next();
+//						HashMap sourceColumn = new HashMap();
+//						String t_column_name = (String) column.get("targetCName");
+//						if (!"".equals(column.get("targetTName"))) {
+//							t_column_name = column.get("targetTName") + "." + t_column_name;
+//							if (!"".equals(column.get("targetDBName")))
+//								t_column_name = column.get("targetDBName") + "." + t_column_name;
+//						}
+//						if (t_column_name.equalsIgnoreCase(qualifyName)) {
+//							sourceColumn.put("databaseName", (String) column.get("sourceDBName"));
+//							String commentID = (String) column.get("expression");
+//							String exp = commentID + " ==> " + columnExpStr;
+//							if (sqlNum > sql_num_limit) {
+//								String relationComm = getComment(commentID);
+//								exp = relationComm + " ==> " + columnExpStr;
+//							}
+//							sourceColumn.put("tableName", column.get("sourceTName"));
+//							sourceColumn.put("columnName", column.get("sourceCName"));
+//							sourceColumn.put("expression", exp);
+//							sourceColumn.put("conditions", column.get("conditions"));
+//							sourceColumnList.add(sourceColumn);
+//							// break;
+//						}
+//					}
+//				}
+//			}
 		} else {
 			//TODO:这里是通过普通表找源字段的地方
 			index = commonIndex(inputTableName);
-			for (int i = 0; i < commonTableSourceList.size(); i++) {
-				HashMap commonTable = (HashMap) commonTableSourceList.get(i);
-				Integer commonIndex = (Integer) commonTable.get("sqlIndex");
-				if (index == commonIndex.intValue()) {
-					columnSet = (HashSet) commonTable.get("sourceColumnList");
-					List columnList = new ArrayList(columnSet);
+      Map<Integer, Map> commonTableSource = commonTableSourceList.get(index);
+      if(commonTableSource == null) {
+        commonTableSource = new HashMap<Integer, Map>();
+        commonTableSourceList.put(index, commonTableSource);
+      }
+      Collection<Map> columnSet = commonTableSource.values();
 
-					for (int j = 0; j < columnList.size(); j++) {
-						HashMap column = (HashMap) columnList.get(j);
-						HashMap sourceColumn = new HashMap();
-						String t_column_name = (String) column.get("targetCName");
-						if (!"".equals(column.get("targetTName"))) {
-							t_column_name = column.get("targetTName") + "." + t_column_name;
-							if (!"".equals(column.get("targetDBName")))
-								t_column_name = column.get("targetDBName") + "." + t_column_name;
-						}
-						if (t_column_name.equalsIgnoreCase(qualifyName)) {
-							sourceColumn.put("databaseName", (String) column.get("sourceDBName"));
-							String commentID = (String) column.get("expression");
-							String exp = commentID + " ==> " + columnExpStr;
-							if (sqlNum > sql_num_limit) {
-								String relationComm = getComment(commentID);
-								exp = relationComm + " ==> " + columnExpStr;
-							}
-							sourceColumn.put("tableName", (String) column.get("sourceTName"));
-							sourceColumn.put("columnName", (String) column.get("sourceCName"));
-							sourceColumn.put("expression", exp);
-              sourceColumn.put("conditions", column.get("conditions"));
-							sourceColumnList.add(sourceColumn);
-						}
-					}
+      for(Map column : columnSet) {
+        HashMap sourceColumn = new HashMap();
+        String t_column_name = (String) column.get("targetCName");
+        if (!"".equals(column.get("targetTName"))) {
+          t_column_name = column.get("targetTName") + "." + t_column_name;
+          if (!"".equals(column.get("targetDBName")))
+            t_column_name = column.get("targetDBName") + "." + t_column_name;
+        }
+        if (t_column_name.equalsIgnoreCase(qualifyName)) {
+          sourceColumn.put("databaseName", (String) column.get("sourceDBName"));
+          String commentID = (String) column.get("expression");
+          String exp = commentID + " ==> " + columnExpStr;
+          if (sqlNum > sql_num_limit) {
+            String relationComm = getComment(commentID);
+            exp = relationComm + " ==> " + columnExpStr;
+          }
+          sourceColumn.put("tableName", (String) column.get("sourceTName"));
+          sourceColumn.put("columnName", (String) column.get("sourceCName"));
+          sourceColumn.put("expression", exp);
+          sourceColumn.put("conditions", column.get("conditions"));
+          sourceColumnList.add(sourceColumn);
+        }
+      }
 
-				}
-			}
+//			for (int i = 0; i < commonTableSourceList.size(); i++) {
+//				HashMap commonTable = (HashMap) commonTableSourceList.get(i);
+//				Integer commonIndex = (Integer) commonTable.get("sqlIndex");
+//				if (index == commonIndex.intValue()) {
+//					columnSet = (HashSet) commonTable.get("sourceColumnList");
+//					List columnList = new ArrayList(columnSet);
+//
+//					for (int j = 0; j < columnList.size(); j++) {
+//						HashMap column = (HashMap) columnList.get(j);
+//						HashMap sourceColumn = new HashMap();
+//						String t_column_name = (String) column.get("targetCName");
+//						if (!"".equals(column.get("targetTName"))) {
+//							t_column_name = column.get("targetTName") + "." + t_column_name;
+//							if (!"".equals(column.get("targetDBName")))
+//								t_column_name = column.get("targetDBName") + "." + t_column_name;
+//						}
+//						if (t_column_name.equalsIgnoreCase(qualifyName)) {
+//							sourceColumn.put("databaseName", (String) column.get("sourceDBName"));
+//							String commentID = (String) column.get("expression");
+//							String exp = commentID + " ==> " + columnExpStr;
+//							if (sqlNum > sql_num_limit) {
+//								String relationComm = getComment(commentID);
+//								exp = relationComm + " ==> " + columnExpStr;
+//							}
+//							sourceColumn.put("tableName", (String) column.get("sourceTName"));
+//							sourceColumn.put("columnName", (String) column.get("sourceCName"));
+//							sourceColumn.put("expression", exp);
+//              sourceColumn.put("conditions", column.get("conditions"));
+//							sourceColumnList.add(sourceColumn);
+//						}
+//					}
+//				}
+//			}
 		}
 		return sourceColumnList;
 	}
@@ -3799,9 +3928,9 @@ public class SqlParser {
 					
 					Boolean ifVolitale = (Boolean) tableInfo.get("volatile");
 					if (ifVolitale.booleanValue())
-						volatileTableList.add(tableInfo);		//FIXME: 查看哪里使用
+						volatileTableList.add(tableInfo);
 					else
-						commonTableList.add(tableInfo);			//FIXME: 查看哪里使用
+						commonTableList.add(tableInfo);
 					parseTableWithSelect(statement);
 				}
 				if (statement.getClassName().equals("com.teradata.sqlparser.interpret.UpdateTable")) {
